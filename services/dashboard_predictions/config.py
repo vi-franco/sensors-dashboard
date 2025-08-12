@@ -5,17 +5,23 @@ from pathlib import Path
 # ==============================================================================
 # --- GLOBAL CONFIGURATION ---
 # ==============================================================================
-BASE_PATH = Path(__file__).resolve().parent
-DB_PATH = BASE_PATH / "database.db"
+# Root del progetto (due livelli su dal file config.py)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# --- Percorsi base ---
+BASE_PATH = PROJECT_ROOT  # se serve per altre cose
+
+# --- Percorso database (se serve tenerlo qui) ---
+DB_PATH = PROJECT_ROOT / "database.db"
 
 # --- Model Directories ---
-ACTUATOR_MODEL_DIR = BASE_PATH / "modelli_salvati_adv"
-PREDICTION_MODEL_DIR = BASE_PATH / "modelli_previsione"
-ACTION_REGRESSOR_DIR = PREDICTION_MODEL_DIR
+ACTUATOR_MODEL_DIR   = PROJECT_ROOT / "colab_models" / "actuator_classification" / "output"
+PREDICTION_MODEL_DIR = PROJECT_ROOT / "colab_models" / "prediction_model" / "output"
+ACTION_REGRESSOR_DIR = PROJECT_ROOT / "colab_models" / "action_regressor" / "output"
+
 # Alias di compatibilità per altri moduli
 MODEL_DIR_CLASSIFICATION = ACTUATOR_MODEL_DIR
 MODEL_DIR_PREDICTION     = PREDICTION_MODEL_DIR
-ACTION_REGRESSOR_DIR = PREDICTION_MODEL_DIR
 
 # --- Data sources ---
 INFLUXDB_HOST = 'localhost'

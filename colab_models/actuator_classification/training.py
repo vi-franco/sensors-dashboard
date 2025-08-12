@@ -252,11 +252,20 @@ avg_epochs = max(avg_epochs, 5)
 print(f"Addestramento finale per {avg_epochs} epoche...")
 model_final.fit(X_scaled_final, y_df, epochs=avg_epochs, batch_size=64, verbose=0)
 
-SAVED_PATH = Path(BASE_PATH) / "modelli_salvati_adv"
-SAVED_PATH.mkdir(parents=True, exist_ok=True)
-model_final.save(SAVED_PATH / "model.keras")
-joblib.dump(scaler_final, SAVED_PATH / "scaler.joblib")
-with open(SAVED_PATH / "features.json", "w") as f:
-    json.dump(features, f)
+SAVE_DIR = Path("colab_models/actuator_classification/output")  # o via argomento
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
-print(f"✅ Modello/scaler/feature salvati in: {SAVED_PATH}")
+model_final.save(SAVE_DIR / "model.keras")
+joblib.dump(scaler_final, SAVE_DIR / "scaler.joblib")
+with open(SAVE_DIR / "features.json", "w") as f:
+    json.dump(features, f, indent=2)
+
+# opzionale: salva metriche utili nel commit message/tag
+metrics = {
+    "emr": float(emr),
+    # aggiungi AP/AUC per attuatore se vuoi
+}
+with open(SAVE_DIR / "metrics.json", "w") as f:
+    json.dump(metrics, f, indent=2)
+
+print(f"✅ Modello/scaler/feature salvati in: {SAVE_DIR}")
