@@ -18,7 +18,6 @@ from utils.feature_engineering import (
     add_features_actuator_classification,
     final_features_actuator_classification
 )
-from colab_models.common import load_hysteresis_map_en  # se sta qui nel tuo repo
 
 # --------------------------------------------------------------------------------------
 # Caricamento artefatti
@@ -83,12 +82,7 @@ def _apply_hysteresis(
     oppure i fallback in config (IT). Ritorna (stati_IT, probs_EN).
     """
     # Soglie dall'archivio (EN), es.: {'AC': {'on':0.7,'off':0.4}, ...}
-    try:
-        hys_en = load_hysteresis_map_en()
-    except Exception as e:
-        print(f"[WARN] Could not load hysteresis from DB. Using config defaults. Err: {e}")
-        hys_en = {}
-
+    hys_en = {}
     current_states_it: Dict[str, int] = {}
     probs_en: Dict[str, float] = {}
 
