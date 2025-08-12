@@ -16,8 +16,8 @@ from . import config
 from utils.feature_engineering import (
     ensure_min_columns_actuator_classification,
     add_features_actuator_classification,
+    final_features_actuator_classification
 )
-from utils.functions import create_features_for_actuator_model
 from colab_models.common import load_hysteresis_map_en  # se sta qui nel tuo repo
 
 # --------------------------------------------------------------------------------------
@@ -39,17 +39,8 @@ except Exception as e:
     raise SystemExit(f"[FATAL] Could not load model/scaler: {e}")
 
 # Carica la lista delle feature usate in training (se disponibile)
-if FEATURES_JSON.exists():
-    try:
-        with open(FEATURES_JSON, "r") as f:
-            TRAIN_FEATURES = list(json.load(f))
-        print(f"[CLASSIFICATION] Loaded {len(TRAIN_FEATURES)} features from features.json")
-    except Exception as e:
-        print(f"[WARN] Could not read features.json: {e}. Falling back to config.")
-        TRAIN_FEATURES = list(config.CLASSIFICATION_FEATURES)
-else:
-    TRAIN_FEATURES = list(config.CLASSIFICATION_FEATURES)
-    print(f"[CLASSIFICATION] Using {len(TRAIN_FEATURES)} features from config.")
+TRAIN_FEATURES = final_features_actuator_classification()
+
 
 # Mapping e attuatori
 ALL_ACTUATORS_IT = list(config.ALL_ACTUATORS_IT)
@@ -73,23 +64,14 @@ def _build_feature_frame(
     ensure_min_columns_actuator_classification(history_df)
     fe_df = add_features_actuator_classification(history_df.copy())
 
-    # (2) Crea il vettore finale come nel training (usa util condivisa)
-    feat_row: pd.DataFrame = create_features_for_actuator_model(
-        df_hist=fe_df,
-        weather_df=weather_df,
-        available_actuators_it=available_actuators_it,
-        actuator_states=None,  # in classificazione corrente non simuli scenari
-        required_features_list=required_features,
-    )
-
     # (3) Allineamento colonne e gestione NaN
     #    - reindicizza per assicurare l'ordine esatto richiesto dal modello/scaler
     #    - riempi eventuali NaN (es. meteo mancante)
-    feat_row = feat_row.reindex(columns=required_features)
-    feat_row = feat_row.fillna(0.0)
+    fe_df = fe_df.reindex(columns=required_features)
+    fe_df = fe_df.fillna(0.0)
 
     # (4) dtype coerente
-    return feat_row.astype(np.float32)
+    return fe_df.astype(np.float32)
 
 
 def _apply_hysteresis(
