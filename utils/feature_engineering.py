@@ -38,7 +38,7 @@ def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     if missing_columns:
         raise ValueError(f"DataFrame is missing required columns for actuator classification: {', '.join(missing_columns)}")
 
-def final_features_actuator_classification() -> List[str]:
+def final_features_actuator_classification() -> list:
     return [
         # Base
         "temperature_sensor","absolute_humidity_sensor","co2","voc",
