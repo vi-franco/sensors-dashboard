@@ -126,10 +126,11 @@ if data_for_training.empty:
 # Shuffle e selezione X/y
 df_train = data_for_training.sample(frac=1, random_state=42).reset_index(drop=True)
 
-print(df_train[features].isna().sum().sort_values(ascending=False).head(10))
-
 X_df = df_train[features]
+X_df = X_df.fillna(X_df.mean())
+
 y_df = df_train[targets].astype(int)
+
 
 N_SPLITS = 5
 kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
