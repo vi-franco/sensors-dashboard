@@ -2,10 +2,6 @@
 # SEZIONE 0 — SETUP E CONFIGURAZIONE
 # ==============================================================================
 print("--- [SEZIONE 0] Inizio Setup e Configurazione ---")
-import ../common
-import ../utils/feature-engineering
-import ../utils/functions
-
 import json
 from pathlib import Path
 import pandas as pd
@@ -17,6 +13,18 @@ from tensorflow import keras
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
+import sys
+import os
+
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+sys.path.insert(0, str(PROJECT_ROOT))  # solo la root
+
+from utils import feature_engineering, functions
+from colab_models import common
+
+from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
+from common import load_unified_dataset, get_data_from_periods
 
 try:
     from google.colab import drive
@@ -32,7 +40,6 @@ TEST_PERIODS_FILE = BASE_PATH / "test_periods.csv"
 
 ALL_ACTUATORS = ["Umidificatore", "Finestra", "Deumidificatore", "Riscaldamento", "Clima"]
 STATE_COLS = [f"state_{act}" for act in ALL_ACTUATORS]
-AVAILABILITY_COLS = [f"available_{act}" for act in ALL_ACTUATORS]
 
 print("✅ [SEZIONE 0] Setup completato.")
 
@@ -84,6 +91,7 @@ print("✅ [SEZIONE 2] Dati caricati.")
 
 print("\n--- [SEZIONE 3] Feature Engineering ---")
 
+ensure_min_columns_actuator_classification(final_df)
 df = add_features_actuator_classification(final_df)
 
 print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
@@ -94,57 +102,8 @@ print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
 # ==============================================================================
 print("\n--- [SEZIONE 4] Definizione Feature e Split ---")
 
-# Base osservabili istantanei
-BASE_FEATURES = [
-    "temperature_sensor","absolute_humidity_sensor","co2","voc",
-    "temperature_external","absolute_humidity_external",
-    "ground_level_pressure","wind_speed","clouds_percentage","rain_1h",
-    "presence",
-]
-
-# Gradienti / VPD / interazioni
-GRADIENT_FEATURES = [
-    "temp_diff_in_out","ah_diff_in_out","dewpoint_diff_in_out",
-    "vpd_in","vpd_out","vpd_diff","temp_diff_x_wind",
-]
-
-# Tempo locale (ciclico + luce)
-TIME_FEATURES = [
-    "hour_sin","hour_cos","dow_sin","dow_cos","doy_sin","doy_cos",
-    "minutes_from_sunrise","minutes_to_sunset","is_daylight",
-]
-
-# Rolling schema coerente per le serie interne
-def roll_feats(prefix):
-    return [
-        f"{prefix}_accel_1m",
-        f"{prefix}_trend_5m", f"{prefix}_trend_30m",
-        f"{prefix}_mean_5m",  f"{prefix}_mean_30m",
-        f"{prefix}_std_5m",   f"{prefix}_std_30m",
-    ]
-ROLLING_FEATURES = sum([roll_feats(c) for c in INTERNAL_SERIES], [])
-
-# Trend esterni
-EXTERNAL_TREND_FEATURES = [
-    "temperature_external_trend_5m","temperature_external_trend_30m",
-    "absolute_humidity_external_trend_5m","absolute_humidity_external_trend_30m",
-]
-
-# Baseline delta
-BASELINE_FEATURES = [f"{c}_baseline_delta" for c in BASELINE_COLS]
-
-# TERMODINAMICA (dew points)
-THERMO_FEATURES = ["dew_point_sensor","dew_point_external"]
-
-# MODEL FEATURES (senza available_*)
-MODEL_FEATURES = (
-    BASE_FEATURES + GRADIENT_FEATURES + TIME_FEATURES +
-    ROLLING_FEATURES + EXTERNAL_TREND_FEATURES +
-    BASELINE_FEATURES + THERMO_FEATURES
-)
-
 # tieni solo quelle realmente presenti
-features = [f for f in MODEL_FEATURES if f in df.columns]
+features = final_features_actuator_classification()
 targets  = STATE_COLS.copy()
 
 print(f"Features: {len(features)} · Targets: {len(targets)}")
@@ -158,7 +117,6 @@ log_actuator_stats(data_for_training, "Training Set")
 log_actuator_stats(test_df, "Test Set")
 
 print("✅ [SEZIONE 4] OK.")
-
 
 # ==============================================================================
 # SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (K-Fold multilabel)

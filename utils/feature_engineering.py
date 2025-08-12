@@ -1,6 +1,5 @@
 
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
-
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
     df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
@@ -9,7 +8,7 @@ def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_event_flags(df)
     return df
 
-def ensure_min_columns_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
+def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     required_columns = [
         "device",
         "utc_datetime",
