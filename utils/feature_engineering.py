@@ -1,3 +1,5 @@
+import pandas as pd
+import numpy as np
 
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_time_cyclic(df)
