@@ -23,13 +23,7 @@ sys.path.insert(0, str(PROJECT_ROOT))  # solo la root
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
 from colab_models.common import load_unified_dataset, get_data_from_periods
 
-try:
-    from google.colab import drive
-    drive.mount("/content/drive", force_remount=True)
-    BASE_PATH = Path("/content/drive/MyDrive/Tesi")
-except (ImportError, Exception):
-    print("Non in Google Colab o errore di mount, esco")
-    raise SystemExit("Montaggio Google Drive fallito.")
+BASE_PATH = Path("/content/drive/MyDrive/Tesi")
 
 DATASET_COMPLETO_PATH = BASE_PATH / "DatasetSegmentato"
 TRAINING_PERIODS_FILE = BASE_PATH / "training_periods.csv"
