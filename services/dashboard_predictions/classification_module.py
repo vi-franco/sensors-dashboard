@@ -12,7 +12,7 @@ import joblib
 import tensorflow as tf
 
 # Import interni al progetto (assumi che la root del repo sia già nel PYTHONPATH)
-import config
+from . import config
 from utils.feature_engineering import (
     ensure_min_columns_actuator_classification,
     add_features_actuator_classification,
