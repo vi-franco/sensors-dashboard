@@ -127,7 +127,6 @@ if data_for_training.empty:
 df_train = data_for_training.sample(frac=1, random_state=42).reset_index(drop=True)
 X_df = df_train[features]
 y_df = df_train[targets].astype(int)
-avail_df = df_train[AVAILABILITY_COLS].clip(0,1).astype(int) if set(AVAILABILITY_COLS).issubset(df_train.columns) else None
 
 N_SPLITS = 5
 kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
@@ -166,11 +165,6 @@ for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
     histories.append(history)
 
     preds = model.predict(X_va_s, verbose=0)
-
-    # Maschera di disponibilità SOLO post-predizione (non come feature)
-    if avail_df is not None:
-        avail_va = avail_df.iloc[va_idx].values
-        preds = preds * avail_va  # forza a 0 dove non disponibile
 
     all_y_val.append(y_va.values)
     all_y_pred_probs.append(preds)
