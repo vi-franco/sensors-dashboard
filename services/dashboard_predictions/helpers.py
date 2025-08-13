@@ -502,7 +502,6 @@ def save_results_to_db(record):
 
         placeholders = ",".join(["?"] * len(cols))
         col_list = ",".join(cols)
-        # ON CONFLICT su device_id (PK) -> aggiorna tutte le colonne eccetto la PK
         update_clause = ",".join([f"{c}=excluded.{c}" for c in cols if c != "device_id"])
 
         with sqlite3.connect(config.DB_PATH) as con:

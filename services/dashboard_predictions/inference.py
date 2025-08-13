@@ -82,8 +82,6 @@ if __name__ == "__main__":
             print(f"[ERROR] Classification failed for {device_id}: {class_status}. Skipping.")
             continue
 
-        last_known_states = helpers.get_last_known_states(device_id)
-
         with sqlite3.connect(config.DB_PATH) as con:
             con.row_factory = sqlite3.Row
             act_rows = con.execute(
@@ -122,6 +120,7 @@ if __name__ == "__main__":
         #    device_id, history_df, weather_history_df
         #)
 
+        #last_known_states = helpers.get_last_known_states(device_id)
         #winning_suggestions = action_suggestion_module.run_action_suggestions(
         #    device_id=device_id,
         #    history_df=history_df,
