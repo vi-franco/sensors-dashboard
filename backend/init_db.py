@@ -11,8 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from colab_models.common import get_actuator_names
 
-# --- CONFIGURATION (come nel tuo originale) ---
-DB_PATH = 'database.db'
+DB_PATH = PROJECT_ROOT / "backend" / 'database.db'
 ALL_ACTUATORS = get_actuator_names()
 
 def initialize_database():

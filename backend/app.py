@@ -4,15 +4,20 @@ import json
 import time
 import requests
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-# --- CONFIGURATION ---
-DB_PATH = 'database.db'
-ALL_ACTUATORS_EN = ['Humidifier', 'Window', 'Dehumidifier', 'Heating', 'AC']
-ALL_ACTUATORS_IT = ['Umidificatore', 'Finestra', 'Deumidificatore', 'Riscaldamento', 'Clima']
-ACTUATOR_MAP_EN_TO_IT = dict(zip(ALL_ACTUATORS_EN, ALL_ACTUATORS_IT))
+from colab_models.common import get_actuator_names
+
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+sys.path.insert(0, str(PROJECT_ROOT))
+
+DB_PATH = PROJECT_ROOT / "backend" / 'database.db'
+ACTUATORS = get_actuator_names()
 
 OWM_API_KEY = "d71435a2c59c063aaddc1332c9f226be"
 OWM_CACHE = {}
@@ -96,7 +101,7 @@ def get_weather_for_device(lat, lon):
 def generate_suggestion_text(current_states, suggested_states):
     """Generates a human-readable action text from actuator state changes."""
     actions = []
-    for act_en in ALL_ACTUATORS_EN:
+    for act_en in ACTUATORS:
         state_key_db = f'state_{act_en}'
         act_it = ACTUATOR_MAP_EN_TO_IT.get(act_en, act_en)
         
@@ -146,7 +151,7 @@ def get_full_data():
 
                 # costruiamo 'actuators' come oggetti {state, prob, thresholds}
                 actuators_payload = {}
-                for act in ALL_ACTUATORS_EN:
+                for act in ACTUATORS:
                     state_key = f'state_{act}'
                     prob_key  = f'prob_{act}'
 
@@ -211,7 +216,7 @@ def get_full_data():
 
             devices_payload.append(device_data)
             
-    return {"devices": devices_payload, "all_actuators": ALL_ACTUATORS_EN}
+    return {"devices": devices_payload, "all_actuators": ACTUATORS}
 
 # --- API ENDPOINTS ---
 @app.route('/api/data', methods=['GET'])
@@ -233,7 +238,7 @@ def api_add_device():
                 "INSERT INTO devices (device_id, room_name, location_name, owm_lat, owm_lon) VALUES (?, NULL, ?, ?, ?)",
                 (device_id, location_name, lat, lon)
             )
-            for act in ALL_ACTUATORS_EN:
+            for act in ACTUATORS:
                 conn.execute(
                     "INSERT INTO device_actuators (device_id, actuator_name, is_enabled) VALUES (?, ?, ?)",
                     (device_id, act, 1)

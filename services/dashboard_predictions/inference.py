@@ -81,7 +81,7 @@ if __name__ == "__main__":
             'status_level': status['level'],
             'status_message': status['message'],
         }
-        # IT -> EN per colonne state_<EN>
+
         for actuator in get_actuator_names():
             record[f'state_{actuator}'] = int(states.get(f'state_{actuator}', 0))
         if probs:
