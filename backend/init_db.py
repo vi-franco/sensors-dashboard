@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 CURRENT_DIR = Path(__file__).parent
-PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+PROJECT_ROOT = (CURRENT_DIR / "..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from colab_models.common import get_actuator_names
