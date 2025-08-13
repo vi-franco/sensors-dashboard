@@ -46,6 +46,8 @@ def manage_weather_history(device_id, lat, lon):
             api_response_data = response.json()
 
             timezone_shift = api_response_data.get('timezone', 0)
+            dt_epoch = api_response_data.get('dt')
+
             current_weather = {
                 "temperature_external": api_response_data['main']['temp'],
                 "humidity_external": api_response_data['main']['humidity'],
@@ -53,19 +55,21 @@ def manage_weather_history(device_id, lat, lon):
                 "wind_speed": api_response_data['wind']['speed'],
                 "clouds_percentage": api_response_data['clouds']['all'],
                 "rain_1h": api_response_data.get('rain', {}).get('1h', 0.0),
-                "lat": lat,
-                "lng": lon,
+                "lat": float(lat),
+                "lng": float(lon),
                 "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "local_datetime": datetime.fromtimestamp(api_response_data['dt'] + timezone_shift, timezone.utc).isoformat(),
+                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat(),
+                "local_datetime": datetime.fromtimestamp(dt_epoch + timezone_shift, timezone.utc).isoformat() if dt_epoch is not None else None,
+                "dt": dt_epoch,
+                "timezone": timezone_shift,
                 "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
-                "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
+                "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity']),
             }
             with open(cache_file_path, 'w') as f:
                 json.dump(current_weather, f)
         except requests.exceptions.RequestException as e:
             print(f"[ERROR] Weather API call failed for device {device_id}: {e}")
-            return pd.DataFrame() # Ritorna un df vuoto in caso di fallimento grave
+            return pd.DataFrame()  # DF vuoto in caso di fallimento grave
 
     # --- 2. GESTIONE STORICO SPECIFICO PER DISPOSITIVO ---
     history = []
@@ -77,23 +81,43 @@ def manage_weather_history(device_id, lat, lon):
         except (IOError, json.JSONDecodeError):
             history = []
 
+    # timestamp osservazione: uso 'now' come riferimento storico uniforme
     current_weather['utc_datetime'] = now.isoformat()
     history.append(current_weather)
 
     cutoff_time = now - timedelta(minutes=config.WEATHER_HISTORY_MINUTES)
     history = [rec for rec in history if datetime.fromisoformat(rec['utc_datetime']) > cutoff_time]
-    
+
     with open(history_file_path, 'w') as f:
         json.dump(history, f, indent=2)
 
     # --- 3. CREAZIONE DATAFRAME FINALE ---
     weather_df = pd.DataFrame(history)
-    weather_df['utc_datetime'] = pd.to_datetime(weather_df['utc_datetime'])
+    # parse e indice temporale
+    weather_df['utc_datetime'] = pd.to_datetime(weather_df['utc_datetime'], utc=True, errors='coerce')
     weather_df = weather_df.set_index('utc_datetime').sort_index()
     weather_df = weather_df[~weather_df.index.duplicated(keep='last')]
-    weather_df_resampled = weather_df.resample('min').mean()
-    weather_df_resampled = weather_df_resampled.interpolate(method='linear').ffill().bfill()
-    
+
+    # MEDIA solo sulle colonne numeriche
+    num_cols = weather_df.select_dtypes(include='number').columns
+    num_resampled = weather_df[num_cols].resample('min').mean()
+
+    # Per le non-numeriche: prendi l'ultimo valore noto al minuto e propaga
+    non_num_cols = weather_df.columns.difference(num_cols)
+    if len(non_num_cols) > 0:
+        non_num_resampled = weather_df[non_num_cols].resample('min').last().ffill()
+        weather_df_resampled = num_resampled.join(non_num_resampled)
+    else:
+        weather_df_resampled = num_resampled
+
+    # Interpola i soli numerici; poi ffill/bfill per sicurezza
+    weather_df_resampled[num_cols] = (
+        weather_df_resampled[num_cols]
+        .interpolate(method='linear', limit_direction='both')
+        .ffill()
+        .bfill()
+    )
+
     print(f"[LOG] Weather history for {device_id} managed. {len(weather_df_resampled)} records available.")
     return weather_df_resampled
 
