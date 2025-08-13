@@ -58,11 +58,10 @@ def manage_weather_history(device_id, lat, lon):
                 "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
                 "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
                 "utc_datetime": datetime.fromtimestamp(api_response_data['dt'], timezone.utc).isoformat(),
-                "local_datetime" datetime.fromtimestamp(api_response_data['dt'] + timezone_shift, timezone.utc).isoformat(),
+                "local_datetime": datetime.fromtimestamp(api_response_data['dt'] + timezone_shift, timezone.utc).isoformat(),
                 "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
                 "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
             }
-            add_local_time(current_weather, lat, lon)
             with open(cache_file_path, 'w') as f:
                 json.dump(current_weather, f)
         except requests.exceptions.RequestException as e:
@@ -422,42 +421,6 @@ def create_features_for_actuator_model(
             latest[col] = 0
 
     return latest[required_features_list]
-    
-def add_local_time(df: pd.DataFrame, lat: float, lon: float) -> pd.DataFrame:
-    """
-    Aggiunge una colonna 'local_datetime' a un DataFrame che ha un indice
-    di tipo DatetimeIndex in formato UTC.
-
-    Args:
-        df (pd.DataFrame): Il DataFrame di input con indice UTC.
-        lat (float): Latitudine.
-        lon (float): Longitudine.
-
-    Returns:
-        pd.DataFrame: Il DataFrame con la colonna 'local_datetime' aggiunta.
-    """
-    if not isinstance(df.index, pd.DatetimeIndex):
-        raise TypeError("Il DataFrame deve avere un DatetimeIndex.")
-    if df.index.tz is None:
-        raise TypeError("L'indice del DataFrame deve essere localizzato in UTC (tz-aware).")
-
-    # 1. Trova il nome del fuso orario (es. 'Europe/Rome')
-    tf = TimezoneFinder()
-    timezone_str = tf.timezone_at(lng=lon, lat=lat)
-
-    if timezone_str is None:
-        print(f"[ATTENZIONE] Nessun fuso orario trovato per lat={lat}, lon={lon}. La colonna 'local_datetime' non sarà aggiunta.")
-        # Restituisce una copia per evitare di modificare l'originale
-        return df.copy()
-
-    # 2. Converte l'indice UTC nel fuso orario locale
-    local_time_index = df.index.tz_convert(timezone_str)
-
-    # 3. Aggiunge la nuova colonna al DataFrame
-    df_copy = df.copy()
-    df_copy['local_datetime'] = local_time_index
-
-    return df_copy
 
 def create_features_for_prediction_model(df_hist, weather_df, required_features_list):
     """
