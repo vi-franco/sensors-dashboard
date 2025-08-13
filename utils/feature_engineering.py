@@ -5,7 +5,7 @@ from utils.functions import vpd_kpa
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
-    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"], win_short=5, win_long=30, extra_windows=(60, 180))
+    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"], win_short=5, win_long=30, extra_windows=(60, 180))
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
     df = add_device_baselines(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
     df = add_since_minutes(df)
