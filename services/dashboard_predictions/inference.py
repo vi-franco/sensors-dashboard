@@ -15,6 +15,7 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from colab_models.actuator_classification.inference import run_inference as run_classification_inference
+from colab_models.common import get_actuator_names
 
 def _min_utc_index(df):
     if not isinstance(df.index, pd.DatetimeIndex):
