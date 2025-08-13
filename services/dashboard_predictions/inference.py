@@ -16,6 +16,18 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from colab_models.actuator_classification.inference import run_inference as run_classification_inference
 
+def _min_utc_index(df):
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
+    else:
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC")
+        else:
+            df.index = df.index.tz_convert("UTC")
+    df.index = df.index.floor("min")
+    df = df[~df.index.duplicated(keep="last")]
+    return df
+
 if __name__ == "__main__":
     print(f"\n--- Starting inference: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
 
@@ -46,8 +58,12 @@ if __name__ == "__main__":
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
 
+        history_df = _min_utc_index(history_df)
+        weather_history_df = _min_utc_index(weather_history_df)
+
         weather_history_df.index.name = 'utc_datetime'
         merged_df = history_df.join(weather_history_df, how='left')
+        merged_df = merged_df.drop(columns=["utc_datetime"], errors="ignore")
         merged_df = merged_df.reset_index().rename(columns={"index": "utc_datetime"})
         num_cols = merged_df.select_dtypes(include="number").columns
         merged_df[num_cols] = merged_df[num_cols].ffill().bfill()
