@@ -10,6 +10,9 @@ import requests
 from influxdb import InfluxDBClient
 from datetime import datetime, timezone, timedelta
 import config
+import pandas as pd
+from timezonefinder import TimezoneFinder
+import pytz # timezonefinder a volte ha bisogno di pytz
 
 # ==============================================================================
 # --- DATA FETCHING FUNCTIONS ---
@@ -51,7 +54,14 @@ def manage_weather_history(device_id, lat, lon):
                 "wind_speed": api_response_data['wind']['speed'],
                 "clouds_percentage": api_response_data['clouds']['all'],
                 "rain_1h": api_response_data.get('rain', {}).get('1h', 0.0)
+                "lat": lat,
+                "lng": lon,
+                "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
+                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat()
+                "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
+                "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
             }
+            add_local_time(current_weather, lat, lon)
             with open(cache_file_path, 'w') as f:
                 json.dump(current_weather, f)
         except requests.exceptions.RequestException as e:
@@ -68,7 +78,7 @@ def manage_weather_history(device_id, lat, lon):
         except (IOError, json.JSONDecodeError):
             history = []
 
-    current_weather['timestamp'] = now.isoformat()
+    current_weather['utc_datetime'] = now.isoformat()
     history.append(current_weather)
 
     cutoff_time = now - timedelta(minutes=config.WEATHER_HISTORY_MINUTES)
@@ -111,6 +121,9 @@ def get_sensor_history(device_id, status):
             return None, status
 
         df_resampled = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
+        df_resampled['device'] = device_id
+        df_resampled['absolute_humidity_sensor'] = calculate_absolute_humidity(df_resampled['temperature_sensor'], df_resampled['humidity_sensor'])
+        df_resampled['dew_point_sensor'] = calculate_dew_point(df_resampled['temperature_sensor'], df_resampled['humidity_sensor'])
         print(f"[LOG] InfluxDB history processed successfully for {device_id}.")
         return df_resampled, status
     except Exception as e:
@@ -403,7 +416,42 @@ def create_features_for_actuator_model(
 
     return latest[required_features_list]
     
-    
+def add_local_time(df: pd.DataFrame, lat: float, lon: float) -> pd.DataFrame:
+    """
+    Aggiunge una colonna 'local_datetime' a un DataFrame che ha un indice
+    di tipo DatetimeIndex in formato UTC.
+
+    Args:
+        df (pd.DataFrame): Il DataFrame di input con indice UTC.
+        lat (float): Latitudine.
+        lon (float): Longitudine.
+
+    Returns:
+        pd.DataFrame: Il DataFrame con la colonna 'local_datetime' aggiunta.
+    """
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise TypeError("Il DataFrame deve avere un DatetimeIndex.")
+    if df.index.tz is None:
+        raise TypeError("L'indice del DataFrame deve essere localizzato in UTC (tz-aware).")
+
+    # 1. Trova il nome del fuso orario (es. 'Europe/Rome')
+    tf = TimezoneFinder()
+    timezone_str = tf.timezone_at(lng=lon, lat=lat)
+
+    if timezone_str is None:
+        print(f"[ATTENZIONE] Nessun fuso orario trovato per lat={lat}, lon={lon}. La colonna 'local_datetime' non sarà aggiunta.")
+        # Restituisce una copia per evitare di modificare l'originale
+        return df.copy()
+
+    # 2. Converte l'indice UTC nel fuso orario locale
+    local_time_index = df.index.tz_convert(timezone_str)
+
+    # 3. Aggiunge la nuova colonna al DataFrame
+    df_copy = df.copy()
+    df_copy['local_datetime'] = local_time_index
+
+    return df_copy
+
 def create_features_for_prediction_model(df_hist, weather_df, required_features_list):
     """
     Crea feature per il modello di PREDIZIONE, che usa feature cicliche temporali
