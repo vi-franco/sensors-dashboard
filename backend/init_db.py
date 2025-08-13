@@ -3,6 +3,7 @@ import sqlite3
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
