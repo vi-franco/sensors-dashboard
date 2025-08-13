@@ -5,12 +5,14 @@ import os
 from datetime import datetime, timezone
 import config
 import utils
-import classification_module
+
 import prediction_module
 import action_suggestion_module
 
+from colab_models.actuator_classification.run_inference import run_inference as run_classification_inference
+
 if __name__ == "__main__":
-    print(f"\n--- Starting Unified Inference Script: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+    print(f"\n--- Starting inference: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
 
     if not os.path.exists(config.DB_PATH):
         exit(f"[FATAL ERROR] Database file not found at '{config.DB_PATH}'. Please run the setup script first.")
@@ -28,39 +30,37 @@ if __name__ == "__main__":
         lat = device['latitude']; lon = device['longitude']
         print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lon}) {'='*20}")
 
-        # 1) Meteo storico
+        history_df, status = utils.get_sensor_history(device_id, status)
+        if history_df is None or history_df.empty:
+            print(f"[ERROR] {status.get('message','No history')} for {device_id}. Skipping.")
+            continue
+
         weather_history_df = utils.manage_weather_history(device_id=device_id, lat=lat, lon=lon)
         if weather_history_df is None or weather_history_df.empty:
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
 
-        # 2) History + attuatori disponibili
-        status = {'level': 0, 'message': 'OK'}
+        weather_history_df.index.name = 'utc_datetime'
+        merged_df = history_df.join(weather_history_df, how='left')
+        merged_df = merged_df.ffill().bfill()
+
+        print(f"[DEBUG] Merged DataFrame for {device_id}:\n{merged_df.head()}")
+
+        states, probs, class_status = run_classification_inference(merged_df)
+        if states is None:
+            print(f"[ERROR] Classification failed for {device_id}: {class_status}. Skipping.")
+            continue
+
+        last_known_states = utils.get_last_known_states(device_id)
+
         with sqlite3.connect(config.DB_PATH) as con:
             con.row_factory = sqlite3.Row
             act_rows = con.execute(
                 "SELECT actuator_name FROM device_actuators WHERE device_id = ? AND is_enabled = 1",
                 (device_id,)
             ).fetchall()
-            available_en = [row['actuator_name'] for row in act_rows]
-        en_to_it = config.ACTUATOR_MAP_EN_TO_IT
-        available_it = [en_to_it[a] for a in available_en if a in en_to_it]
+            actuators = [row['actuator_name'] for row in act_rows]
 
-        last_known_states = utils.get_last_known_states(device_id)
-        history_df, status = utils.get_sensor_history(device_id, status)
-        if history_df is None or history_df.empty:
-            print(f"[ERROR] {status.get('message','No history')} for {device_id}. Skipping.")
-            continue
-
-        # 3) Classificazione (stati IT + probabilità EN)
-        states_it, class_status, probs_en = classification_module.run_classification(
-            history_df, weather_history_df, available_it, last_known_states
-        )
-        if states_it is None:
-            print(f"[ERROR] Classification failed for {device_id}: {class_status}. Skipping.")
-            continue
-
-        # 4) Salva stato corrente (sensori + state_<EN> + prob_<EN>)
         latest = history_df.iloc[-1]
         heat_index = utils.calculate_heat_index(latest.get('temperature_sensor'), latest.get('humidity_sensor'))
         iaq = utils.calculate_iaq_index(latest.get('co2'), latest.get('voc'))
@@ -78,12 +78,11 @@ if __name__ == "__main__":
             'status_message': status['message'],
         }
         # IT -> EN per colonne state_<EN>
-        for it, en in config.ACTUATOR_MAP_IT_TO_EN.items():
-            record[f'state_{en}'] = int(states_it.get(f'state_{it}', 0))
-        # prob_<EN> per UI
-        if probs_en:
-            for en, p in probs_en.items():
-                record[f'prob_{en}'] = float(p)
+        for actuator in get_actuator_names():
+            record[f'state_{actuator}'] = int(states.get(f'state_{actuator}', 0))
+        if probs:
+            for actuator, p in probs.items():
+                record[f'prob_{actuator}'] = float(p)
 
         utils.save_results_to_db(record)
 

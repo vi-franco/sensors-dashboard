@@ -266,7 +266,7 @@ joblib.dump(scaler_final, SAVE_DIR / "scaler.joblib")
 with open(SAVE_DIR / "features.json", "w") as f:
     json.dump(features, f, indent=2)
 
-thresholds_to_save = optimal_thresholds.copy()
+thresholds_to_save = {key: float(value) for key, value in optimal_thresholds.items()}
 with open(SAVE_DIR / "thresholds.json", "w") as f:
     json.dump(thresholds_to_save, f, indent=4)
 

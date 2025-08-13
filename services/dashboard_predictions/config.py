@@ -36,12 +36,6 @@ WEATHER_HISTORY_DIR = BASE_PATH / "weather_history"
 OWM_CACHE_MINUTES = 15
 WEATHER_HISTORY_MINUTES = 90
 
-# --- Actuator Configuration ---
-ALL_ACTUATORS_IT = ['Umidificatore', 'Finestra', 'Deumidificatore', 'Riscaldamento', 'Clima']
-ALL_ACTUATORS_EN = ['Humidifier', 'Window', 'Dehumidifier', 'Heating', 'AC']
-ACTUATOR_MAP_IT_TO_EN = dict(zip(ALL_ACTUATORS_IT, ALL_ACTUATORS_EN))
-ACTUATOR_MAP_EN_TO_IT = dict(zip(ALL_ACTUATORS_EN, ALL_ACTUATORS_IT))
-
 # --- Inference Parameters ---
 HYSTERESIS_THRESHOLDS = {
     'Umidificatore':     {'on': 0.50, 'off': 0.40},
@@ -50,10 +44,10 @@ HYSTERESIS_THRESHOLDS = {
     'Riscaldamento':     {'on': 0.35, 'off': 0.30},
     'Clima':             {'on': 0.70, 'off': 0.60},
 }
-HISTORY_MINUTES = 90
+
+HISTORY_MINUTES = 1440
 MIN_RECORDS_REQUIRED = 10
 SUGGESTION_COMFORT_IMPROVEMENT_THRESHOLD = 5.0
 
-# Limiti fisici
 MIN_CO2 = 400.0
 MIN_VOC = 0.0
