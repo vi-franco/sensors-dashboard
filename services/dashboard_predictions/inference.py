@@ -87,24 +87,24 @@ if __name__ == "__main__":
         utils.save_results_to_db(record)
 
         # 5) Predizioni e suggerimenti
-        predictions, _ = prediction_module.run_prediction(
-            device_id, history_df, weather_history_df
-        )
+        #predictions, _ = prediction_module.run_prediction(
+        #    device_id, history_df, weather_history_df
+        #)
 
-        winning_suggestions = action_suggestion_module.run_action_suggestions(
-            device_id=device_id,
-            history_df=history_df,
-            weather_df=weather_history_df,
-            baseline_predictions=predictions,
-            available_it=available_it,
-            last_known_states=last_known_states
-        )
+        #winning_suggestions = action_suggestion_module.run_action_suggestions(
+        #    device_id=device_id,
+        #    history_df=history_df,
+        #    weather_df=weather_history_df,
+        #    baseline_predictions=predictions,
+        #    available_it=available_it,
+        #    last_known_states=last_known_states
+        #)
         
-        if predictions:
-            utils.save_predictions_and_suggestions_to_db(device_id, predictions, winning_suggestions)
-            utils.save_prediction_timestamp(device_id)
-        else:
-            print(f"[ANALYSIS] No predictions for {device_id}.")
+        #if predictions:
+        #    utils.save_predictions_and_suggestions_to_db(device_id, predictions, winning_suggestions)
+        #    utils.save_prediction_timestamp(device_id)
+        #else:
+        #    print(f"[ANALYSIS] No predictions for {device_id}.")
 
 
 
