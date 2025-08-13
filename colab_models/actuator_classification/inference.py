@@ -15,18 +15,17 @@ CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
+MODEL_DIR = PROJECT_ROOT / "colab_models" / "actuator_classification" / "output"
+
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification
 from colab_models.common import get_actuator_names
 
 def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, float]], str]:
     try:
-        script_dir = Path(__file__).resolve().parent
-        model_dir = script_dir / "output"
-
-        model_path = model_dir / "model.keras"
-        scaler_path = model_dir / "scaler.joblib"
-        features_path = model_dir / "features.json"
-        thresholds_path = model_dir / "thresholds.json"
+        model_path = MODEL_DIR / "model.keras"
+        scaler_path = MODEL_DIR / "scaler.joblib"
+        features_path = MODEL_DIR / "features.json"
+        thresholds_path = MODEL_DIR / "thresholds.json"
 
         model = tf.keras.models.load_model(model_path)
         scaler = joblib.load(scaler_path)
