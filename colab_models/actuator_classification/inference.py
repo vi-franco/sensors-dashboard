@@ -45,9 +45,11 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
 
     try:
         ensure_min_columns_actuator_classification(history_df)
-        fe_df = add_features_actuator_classification(history_df.copy())
-        feature_row = fe_df.reindex(columns=feature_names).fillna(0.0)
-        feature_row = feature_row.astype(np.float32)
+        fe_full = add_features_actuator_classification(history_df.copy())
+        fe_last = fe_full.tail(1)
+        feature_row = fe_last.reindex(columns=feature_names).fillna(0.0).astype(np.float32)
+        print("\n[DEBUG] Feature row (prima dello scaling):")
+        print(feature_row.to_string(index=False))
     except Exception as e:
         return None, None, f"Calcolo feature fallito: {e}"
 

@@ -72,14 +72,6 @@ if __name__ == "__main__":
         merged_df[non_num_cols] = merged_df[non_num_cols].ffill().bfill()
         merged_df = merged_df.infer_objects(copy=False)
 
-        pd.set_option('display.max_columns', None)
-        pd.set_option('display.width', 1000) # Allarga la visualizzazione orizzontale
-
-        print(f"\n[DEBUG] Controllo le prime 5 righe del DataFrame per il device {device_id}...")
-        print("Queste sono le colonne che la funzione di inferenza riceve:")
-        print(merged_df.head())
-        print("-" * 50)
-
         states, probs, class_status = run_classification_inference(merged_df)
         if states is None:
             print(f"[ERROR] Classification failed for {device_id}: {class_status}. Skipping.")
