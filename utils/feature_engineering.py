@@ -5,9 +5,10 @@ from utils.functions import vpd_kpa
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
-    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
+    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"], win_short=5, win_long=30, extra_windows=(60, 180))
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
     df = add_device_baselines(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
+    df = add_since_minutes(df)
     df = add_event_flags(df)
     return df
 
@@ -102,23 +103,69 @@ def add_in_out_delta_features(df: pd.DataFrame) -> pd.DataFrame:
     df["temp_diff_x_wind"] = df["temp_diff_in_out"] * df["wind_speed"].fillna(0)
     return df
 
+def add_since_minutes(df: pd.DataFrame,
+                      actuator_state_cols: list | None = None,
+                      initial_since_value: float = 0.0) -> pd.DataFrame:
+    df = df.copy()
+    df["_dt_utc_parsed"] = pd.to_datetime(df["utc_datetime"], errors="coerce", utc=True)
+    df = df.sort_values(["device", "_dt_utc_parsed"])
 
-def add_rolling_features(df: pd.DataFrame, cols: list, win_short: int = 5, win_long: int = 30) -> pd.DataFrame:
+    if actuator_state_cols is None:
+        actuator_state_cols = [c for c in df.columns if c.startswith("state_")]
+
+    for scol in actuator_state_cols:
+        suffix = scol.split("state_", 1)[1] if "state_" in scol else scol
+        out_col = f"since_minutes_{suffix}"
+
+        def _since_per_group(g: pd.DataFrame) -> pd.Series:
+            s = g[scol].astype("float").round().fillna(method="ffill").fillna(0).astype(int)
+            change_mask = s.ne(s.shift(1, fill_value=s.iloc[0]))
+            change_time = g["_dt_utc_parsed"].where(change_mask)
+            last_change_time = change_time.ffill()
+            first_time = g["_dt_utc_parsed"].iloc[0]
+            last_change_time = last_change_time.fillna(first_time)
+            delta_min = (g["_dt_utc_parsed"] - last_change_time).dt.total_seconds() / 60.0
+            if initial_since_value is not None and len(delta_min) > 0:
+                delta_min.iloc[0] = initial_since_value
+            return delta_min
+
+        df[out_col] = df.groupby("device", group_keys=False).apply(_since_per_group)
+
+    df.drop(columns=["_dt_utc_parsed"], inplace=True, errors="ignore")
+    return df
+
+def add_rolling_features(df: pd.DataFrame, cols: list,
+                         win_short: int = 5, win_long: int = 30,
+                         extra_windows: tuple | list = ()) -> pd.DataFrame:
+    """
+    Retro-compatibile:
+    - Mantiene le colonne già esistenti per 5m/30m con stessi nomi.
+    - Aggiunge opzionalmente finestre extra (es. 60, 180) con i relativi suffissi.
+    - L'accelerazione resta sul window "breve" come prima (_accel_1m).
+    """
     df = df.sort_values(["device", "utc_datetime"])
+    all_windows = [win_short, win_long] + [w for w in extra_windows if w not in (win_short, win_long)]
+
     for c in cols:
         g = df.groupby("device")[c]
-        # trend
-        df[f"{c}_trend_{win_short}m"] = g.diff(win_short)
-        df[f"{c}_trend_{win_long}m"]  = g.diff(win_long)
-        # media e variazione standard
-        df[f"{c}_mean_{win_short}m"] = g.rolling(win_short, min_periods=2).mean().reset_index(level=0, drop=True)
-        df[f"{c}_mean_{win_long}m"]  = g.rolling(win_long,  min_periods=2).mean().reset_index(level=0, drop=True)
-        df[f"{c}_std_{win_short}m"]  = g.rolling(win_short, min_periods=2).std().reset_index(level=0, drop=True)
-        df[f"{c}_std_{win_long}m"]   = g.rolling(win_long,  min_periods=2).std().reset_index(level=0, drop=True)
-        # accelerazione (variazione del trend a breve termine)
+
+        # trend per tutte le finestre richieste
+        for w in all_windows:
+            df[f"{c}_trend_{w}m"] = g.diff(w)
+
+        # mean/std per tutte le finestre richieste
+        for w in all_windows:
+            roll = g.rolling(w, min_periods=max(2, w // 3))
+            df[f"{c}_mean_{w}m"] = roll.mean().reset_index(level=0, drop=True)
+            df[f"{c}_std_{w}m"]  = roll.std().reset_index(level=0, drop=True)
+
+        # accelerazione causale (come avevi già: dal trend breve)
         df[f"{c}_accel_1m"] = df.groupby("device")[f"{c}_trend_{win_short}m"].diff()
     return df
 
+# wrapper opzionale comodo
+def add_long_rolling_features(df: pd.DataFrame, cols: list, long_windows: tuple = (60, 180)) -> pd.DataFrame:
+    return add_rolling_features(df, cols, win_short=5, win_long=30, extra_windows=long_windows)
 
 def add_external_trends(df: pd.DataFrame, cols: list, win_short: int = 5, win_long: int = 30) -> pd.DataFrame:
     for c in cols:
