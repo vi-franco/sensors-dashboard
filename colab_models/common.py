@@ -30,3 +30,6 @@ def get_data_from_periods(df: pd.DataFrame, periods_file: Path) -> pd.DataFrame:
         mask = (df["device"] == r["device"]) & (df["utc_datetime"] >= start) & (df["utc_datetime"] <= end)
         idx.extend(df[mask].index)
     return df.loc[idx].copy()
+
+def get_actuator_names():
+    return ["Umidificatore", "Finestra", "Deumidificatore", "Riscaldamento", "Clima"]

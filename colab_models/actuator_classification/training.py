@@ -21,19 +21,21 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))  # solo la root
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
-from colab_models.common import load_unified_dataset, get_data_from_periods
+from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names
+
+SAVE_DIR = Path(__file__).parent / "output"
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
+print(f"Directory di output pronta: {SAVE_DIR}")
 
 BASE_PATH = Path("/content/drive/MyDrive/Tesi")
-
 DATASET_COMPLETO_PATH = BASE_PATH / "DatasetSegmentato"
 TRAINING_PERIODS_FILE = BASE_PATH / "training_periods.csv"
 TEST_PERIODS_FILE = BASE_PATH / "test_periods.csv"
 
-ALL_ACTUATORS = ["Umidificatore", "Finestra", "Deumidificatore", "Riscaldamento", "Clima"]
+ALL_ACTUATORS = get_actuator_names()
 STATE_COLS = [f"state_{act}" for act in ALL_ACTUATORS]
 
 print("✅ [SEZIONE 0] Setup completato.")
-
 
 # ==============================================================================
 # SEZIONE 1 — FUNZIONI
@@ -93,7 +95,6 @@ print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
 # ==============================================================================
 print("\n--- [SEZIONE 4] Definizione Feature e Split ---")
 
-# tieni solo quelle realmente presenti
 features = final_features_actuator_classification()
 targets  = STATE_COLS.copy()
 
@@ -178,7 +179,7 @@ y_val_all = np.concatenate(all_y_val, axis=0)
 y_pred_probs_all = np.concatenate(all_y_pred_probs, axis=0)
 
 # Curve apprendimento medie
-def plot_mean_learning_curve(histories, metric):
+def plot_mean_learning_curve(histories, metric, save_path):
     seqs_tr = [h.history.get(metric, []) for h in histories]
     seqs_va = [h.history.get(f"val_{metric}", []) for h in histories]
     min_len = min(map(len, seqs_tr + seqs_va)) if seqs_tr and seqs_va else 0
@@ -189,27 +190,35 @@ def plot_mean_learning_curve(histories, metric):
     plt.figure(figsize=(8,5))
     plt.plot(epochs, tr, "o-", label=f"Train {metric}")
     plt.plot(epochs, va, "o-", label=f"Val {metric}")
-    plt.title(f"Curva Apprendimento: {metric}")
-    plt.xlabel("Epoca"); plt.legend(); plt.grid(True); plt.show()
+    plt.title(f"Curva Apprendimento Media: {metric}")
+    plt.xlabel("Epoca"); plt.ylabel(metric.capitalize()); plt.legend(); plt.grid(True)
+    plt.savefig(save_path) # --- MODIFICA: Salva il grafico
+    plt.show()
 
-plot_mean_learning_curve(histories, "loss")
-plot_mean_learning_curve(histories, "precision")
+plot_mean_learning_curve(histories, "loss", save_path=SAVE_DIR / "learning_curve_loss.png")
+plot_mean_learning_curve(histories, "precision", save_path=SAVE_DIR / "learning_curve_precision.png")
+
 
 # ROC & PR
 plt.figure(figsize=(9,7))
 for i, act in enumerate(ALL_ACTUATORS):
     fpr, tpr, _ = roc_curve(y_val_all[:, i], y_pred_probs_all[:, i])
     plt.plot(fpr, tpr, label=f"{act} (AUC={auc(fpr, tpr):.3f})")
-plt.plot([0,1],[0,1],"k--"); plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("ROC Aggregata")
-plt.legend(); plt.grid(True); plt.show()
+plt.plot([0,1],[0,1],"k--"); plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("Curva ROC Aggregata")
+plt.legend(); plt.grid(True)
+plt.savefig(SAVE_DIR / "roc_curve_aggregated.png") # --- MODIFICA: Salva il grafico
+plt.show()
 
-plt.figure(figsize=(9,7))
+
 for i, act in enumerate(ALL_ACTUATORS):
     pr, rc, _ = precision_recall_curve(y_val_all[:, i], y_pred_probs_all[:, i])
     ap = average_precision_score(y_val_all[:, i], y_pred_probs_all[:, i])
     plt.plot(rc, pr, label=f"{act} (AP={ap:.3f})")
-plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title("Precision-Recall Aggregata")
-plt.legend(); plt.grid(True); plt.show()
+plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title("Curva Precision-Recall Aggregata")
+plt.legend(); plt.grid(True)
+plt.savefig(SAVE_DIR / "precision_recall_aggregated.png") # --- MODIFICA: Salva il grafico
+plt.show()
+
 
 # Soglie ottimali per F1
 optimal_thresholds = {}
@@ -252,18 +261,17 @@ avg_epochs = max(avg_epochs, 5)
 print(f"Addestramento finale per {avg_epochs} epoche...")
 model_final.fit(X_scaled_final, y_df, epochs=avg_epochs, batch_size=64, verbose=0)
 
-SAVE_DIR = Path("colab_models/actuator_classification/output")  # o via argomento
-SAVE_DIR.mkdir(parents=True, exist_ok=True)
-
 model_final.save(SAVE_DIR / "model.keras")
 joblib.dump(scaler_final, SAVE_DIR / "scaler.joblib")
 with open(SAVE_DIR / "features.json", "w") as f:
     json.dump(features, f, indent=2)
 
-# opzionale: salva metriche utili nel commit message/tag
+thresholds_to_save = optimal_thresholds.copy()
+with open(SAVE_DIR / "thresholds.json", "w") as f:
+    json.dump(thresholds_to_save, f, indent=4)
+
 metrics = {
     "emr": float(emr),
-    # aggiungi AP/AUC per attuatore se vuoi
 }
 with open(SAVE_DIR / "metrics.json", "w") as f:
     json.dump(metrics, f, indent=2)
