@@ -70,7 +70,7 @@ def final_features_actuator_classification() -> list:
         "temperature_sensor_baseline_delta","absolute_humidity_sensor_baseline_delta",
 
         # Flag eventi
-        "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","ah_rise_flag_5m"
+        "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","ah_rise_flag_5m",
 
         # Since minutes per attuatore
         "since_minutes_Umidificatore",
