@@ -71,6 +71,42 @@ def final_features_actuator_classification() -> list:
 
         # Flag eventi
         "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","ah_rise_flag_5m"
+
+        # Since minutes per attuatore
+        "since_minutes_Umidificatore",
+        "since_minutes_Finestra",
+        "since_minutes_Deumidificatore",
+        "since_minutes_Riscaldamento",
+        "since_minutes_Clima",
+
+        # Rolling lunghi (60m, 180m)
+        "temperature_sensor_trend_60m", "temperature_sensor_trend_180m",
+        "temperature_sensor_mean_60m",  "temperature_sensor_mean_180m",
+        "temperature_sensor_std_60m",   "temperature_sensor_std_180m",
+
+        "absolute_humidity_sensor_trend_60m", "absolute_humidity_sensor_trend_180m",
+        "absolute_humidity_sensor_mean_60m",  "absolute_humidity_sensor_mean_180m",
+        "absolute_humidity_sensor_std_60m",   "absolute_humidity_sensor_std_180m",
+
+        "co2_trend_60m", "co2_trend_180m",
+        "co2_mean_60m",  "co2_mean_180m",
+        "co2_std_60m",   "co2_std_180m",
+
+        "voc_trend_60m", "voc_trend_180m",
+        "voc_mean_60m",  "voc_mean_180m",
+        "voc_std_60m",   "voc_std_180m",
+
+        "temp_diff_in_out_trend_60m", "temp_diff_in_out_trend_180m",
+        "temp_diff_in_out_mean_60m",  "temp_diff_in_out_mean_180m",
+        "temp_diff_in_out_std_60m",   "temp_diff_in_out_std_180m",
+
+        "ah_diff_in_out_trend_60m", "ah_diff_in_out_trend_180m",
+        "ah_diff_in_out_mean_60m",  "ah_diff_in_out_mean_180m",
+        "ah_diff_in_out_std_60m",   "ah_diff_in_out_std_180m",
+
+        "dewpoint_diff_in_out_trend_60m", "dewpoint_diff_in_out_trend_180m",
+        "dewpoint_diff_in_out_mean_60m",  "dewpoint_diff_in_out_mean_180m",
+        "dewpoint_diff_in_out_std_60m",   "dewpoint_diff_in_out_std_180m",
     ]
 
 def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
