@@ -122,8 +122,14 @@ def get_sensor_history(device_id, status):
 
         df_resampled = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
         df_resampled['device'] = device_id
-        df_resampled['absolute_humidity_sensor'] = calculate_absolute_humidity(df_resampled['temperature_sensor'], df_resampled['humidity_sensor'])
-        df_resampled['dew_point_sensor'] = calculate_dew_point(df_resampled['temperature_sensor'], df_resampled['humidity_sensor'])
+        df_resampled['dew_point_sensor'] = df_resampled.apply(
+            lambda row: calculate_dew_point(row['temperature_sensor'], row['humidity_sensor']),
+            axis=1
+        )
+        df_resampled['absolute_humidity_sensor'] = df_resampled.apply(
+            lambda row: calculate_absolute_humidity(row['temperature_sensor'], row['humidity_sensor']),
+            axis=1
+        )
         print(f"[LOG] InfluxDB history processed successfully for {device_id}.")
         return df_resampled, status
     except Exception as e:
