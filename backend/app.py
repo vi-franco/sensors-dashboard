@@ -10,11 +10,11 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from colab_models.common import get_actuator_names
-
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from colab_models.common import get_actuator_names
 
 DB_PATH = PROJECT_ROOT / "backend" / 'database.db'
 ACTUATORS = get_actuator_names()
