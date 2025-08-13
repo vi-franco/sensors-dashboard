@@ -38,7 +38,7 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
         with open(thresholds_path, 'r', encoding='utf-8') as f:
             thresholds = json.load(f)
 
-        print(f"[SETUP] Modello caricato con successo da '{model_dir}'")
+        print(f"[SETUP] Modello caricato con successo da '{MODEL_DIR}'")
 
     except Exception as e:
         return None, None, f"Impossibile caricare il modello: {e}"

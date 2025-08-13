@@ -33,8 +33,8 @@ INFLUXDB_MEASUREMENT = 'dati_sensori'
 
 # --- Weather API ---
 OWM_API_KEY = "d71435a2c59c063aaddc1332c9f226be"
-OWM_CACHE_DIR = BASE_PATH / "owm_cache"
-WEATHER_HISTORY_DIR = BASE_PATH / "weather_history"
+OWM_CACHE_DIR = PROJECT_ROOT / "backend" / "owm_cache"
+WEATHER_HISTORY_DIR = PROJECT_ROOT / "backend" / "weather_history"
 OWM_CACHE_MINUTES = 15
 WEATHER_HISTORY_MINUTES = 90
 
