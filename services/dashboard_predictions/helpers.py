@@ -53,11 +53,11 @@ def manage_weather_history(device_id, lat, lon):
                 "ground_level_pressure": api_response_data['main'].get('pressure'),
                 "wind_speed": api_response_data['wind']['speed'],
                 "clouds_percentage": api_response_data['clouds']['all'],
-                "rain_1h": api_response_data.get('rain', {}).get('1h', 0.0)
+                "rain_1h": api_response_data.get('rain', {}).get('1h', 0.0),
                 "lat": lat,
                 "lng": lon,
                 "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat()
+                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat(),
                 "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
                 "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
             }
