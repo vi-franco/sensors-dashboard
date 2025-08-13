@@ -68,6 +68,8 @@ if __name__ == "__main__":
         merged_df = merged_df.reset_index().rename(columns={"index": "utc_datetime"})
         num_cols = merged_df.select_dtypes(include="number").columns
         merged_df[num_cols] = merged_df[num_cols].ffill().bfill()
+        non_num_cols = merged_df.columns.difference(num_cols)
+        merged_df[non_num_cols] = merged_df[non_num_cols].ffill().bfill()
         merged_df = merged_df.infer_objects(copy=False)
 
         pd.set_option('display.max_columns', None)
