@@ -7,7 +7,7 @@ import sys
 import os
 from datetime import datetime, timezone
 import config
-import utils
+import helpers
 
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
@@ -34,12 +34,12 @@ if __name__ == "__main__":
         lat = device['latitude']; lon = device['longitude']
         print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lon}) {'='*20}")
 
-        history_df, status = utils.get_sensor_history(device_id, status)
+        history_df, status = helpers.get_sensor_history(device_id, status)
         if history_df is None or history_df.empty:
             print(f"[ERROR] {status.get('message','No history')} for {device_id}. Skipping.")
             continue
 
-        weather_history_df = utils.manage_weather_history(device_id=device_id, lat=lat, lon=lon)
+        weather_history_df = helpers.manage_weather_history(device_id=device_id, lat=lat, lon=lon)
         if weather_history_df is None or weather_history_df.empty:
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
@@ -55,7 +55,7 @@ if __name__ == "__main__":
             print(f"[ERROR] Classification failed for {device_id}: {class_status}. Skipping.")
             continue
 
-        last_known_states = utils.get_last_known_states(device_id)
+        last_known_states = helpers.get_last_known_states(device_id)
 
         with sqlite3.connect(config.DB_PATH) as con:
             con.row_factory = sqlite3.Row
@@ -66,8 +66,8 @@ if __name__ == "__main__":
             actuators = [row['actuator_name'] for row in act_rows]
 
         latest = history_df.iloc[-1]
-        heat_index = utils.calculate_heat_index(latest.get('temperature_sensor'), latest.get('humidity_sensor'))
-        iaq = utils.calculate_iaq_index(latest.get('co2'), latest.get('voc'))
+        heat_index = helpers.calculate_heat_index(latest.get('temperature_sensor'), latest.get('humidity_sensor'))
+        iaq = helpers.calculate_iaq_index(latest.get('co2'), latest.get('voc'))
         record = {
             'device_id': device_id,
             'timestamp': datetime.now(timezone.utc).isoformat(),
@@ -77,7 +77,7 @@ if __name__ == "__main__":
             'voc':         max(float(latest.get('voc', 0) or 0), float(getattr(config, "MIN_VOC", 0.0))),
             'heatIndex':   heat_index,
             'iaqIndex':    iaq,
-            'globalComfort': utils.calculate_global_comfort(heat_index, iaq),
+            'globalComfort': helpers.calculate_global_comfort(heat_index, iaq),
             'status_level': status['level'],
             'status_message': status['message'],
         }
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             for actuator, p in probs.items():
                 record[f'prob_{actuator}'] = float(p)
 
-        utils.save_results_to_db(record)
+        helpers.save_results_to_db(record)
 
         # 5) Predizioni e suggerimenti
         #predictions, _ = prediction_module.run_prediction(
@@ -105,8 +105,8 @@ if __name__ == "__main__":
         #)
         
         #if predictions:
-        #    utils.save_predictions_and_suggestions_to_db(device_id, predictions, winning_suggestions)
-        #    utils.save_prediction_timestamp(device_id)
+        #    helpers.save_predictions_and_suggestions_to_db(device_id, predictions, winning_suggestions)
+        #    helpers.save_prediction_timestamp(device_id)
         #else:
         #    print(f"[ANALYSIS] No predictions for {device_id}.")
 
