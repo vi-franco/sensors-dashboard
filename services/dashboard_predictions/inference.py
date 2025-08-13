@@ -6,6 +6,10 @@ from datetime import datetime, timezone
 import config
 import utils
 
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+sys.path.insert(0, str(PROJECT_ROOT))
+
 from colab_models.actuator_classification.run_inference import run_inference as run_classification_inference
 
 if __name__ == "__main__":
