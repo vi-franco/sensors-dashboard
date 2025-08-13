@@ -57,7 +57,6 @@ def manage_weather_history(device_id, lat, lon):
                 "lng": lon,
                 "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
                 "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "utc_datetime": datetime.fromtimestamp(api_response_data['dt'], timezone.utc).isoformat(),
                 "local_datetime": datetime.fromtimestamp(api_response_data['dt'] + timezone_shift, timezone.utc).isoformat(),
                 "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
                 "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
@@ -82,15 +81,15 @@ def manage_weather_history(device_id, lat, lon):
     history.append(current_weather)
 
     cutoff_time = now - timedelta(minutes=config.WEATHER_HISTORY_MINUTES)
-    history = [rec for rec in history if datetime.fromisoformat(rec['timestamp']) > cutoff_time]
+    history = [rec for rec in history if datetime.fromisoformat(rec['utc_datetime']) > cutoff_time]
     
     with open(history_file_path, 'w') as f:
         json.dump(history, f, indent=2)
 
     # --- 3. CREAZIONE DATAFRAME FINALE ---
     weather_df = pd.DataFrame(history)
-    weather_df['timestamp'] = pd.to_datetime(weather_df['timestamp'])
-    weather_df = weather_df.set_index('timestamp').sort_index()
+    weather_df['utc_datetime'] = pd.to_datetime(weather_df['utc_datetime'])
+    weather_df = weather_df.set_index('utc_datetime').sort_index()
     weather_df = weather_df[~weather_df.index.duplicated(keep='last')]
     weather_df_resampled = weather_df.resample('min').mean()
     weather_df_resampled = weather_df_resampled.interpolate(method='linear').ffill().bfill()
