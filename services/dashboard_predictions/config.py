@@ -6,13 +6,15 @@ from pathlib import Path
 # --- GLOBAL CONFIGURATION ---
 # ==============================================================================
 # Root del progetto (due livelli su dal file config.py)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 
 # --- Percorsi base ---
-BASE_PATH = PROJECT_ROOT  # se serve per altre cose
+BASE_PATH = PROJECT_ROOT
 
 # --- Percorso database (se serve tenerlo qui) ---
-DB_PATH = PROJECT_ROOT / "database.db"
+DB_PATH = PROJECT_ROOT / "backend" / "database.db"
 
 # --- Model Directories ---
 ACTUATOR_MODEL_DIR   = PROJECT_ROOT / "colab_models" / "actuator_classification" / "output"

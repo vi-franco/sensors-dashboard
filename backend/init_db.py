@@ -1,12 +1,18 @@
 # init_db.py
 import sqlite3
 import os
+import sys
 from datetime import datetime
+
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from colab_models.common import get_actuator_names
 
 # --- CONFIGURATION (come nel tuo originale) ---
 DB_PATH = 'database.db'
-# Attuatori in EN come usati dal modello/DB esistente
-ALL_ACTUATORS = ['Window', 'Humidifier', 'Dehumidifier', 'Heating', 'AC']
+ALL_ACTUATORS = get_actuator_names()
 
 def initialize_database():
     """
@@ -139,11 +145,11 @@ def initialize_database():
         # Seed di default (soglie ragionevoli). Modificale se vuoi.
         print("Seeding default hysteresis thresholds...")
         default_hys = {
-            'Window':       {'on': 0.70, 'off': 0.30},
-            'Humidifier':   {'on': 0.70, 'off': 0.30},
-            'Dehumidifier': {'on': 0.70, 'off': 0.30},
-            'Heating':      {'on': 0.70, 'off': 0.30},
-            'AC':           {'on': 0.70, 'off': 0.30},
+            'Finestra':       {'on': 0.70, 'off': 0.30},
+            'Umidificatore':   {'on': 0.70, 'off': 0.30},
+            'Deumidificatore': {'on': 0.70, 'off': 0.30},
+            'Riscaldamento':      {'on': 0.70, 'off': 0.30},
+            'Clima':           {'on': 0.70, 'off': 0.30},
         }
         for act, th in default_hys.items():
             cur.execute("""
