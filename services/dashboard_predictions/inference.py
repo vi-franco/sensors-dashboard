@@ -1,5 +1,7 @@
 # inference.py
 # -*- coding: utf-8 -*-
+from pathlib import Path
+
 import sqlite3
 import os
 from datetime import datetime, timezone
