@@ -33,6 +33,7 @@ if __name__ == "__main__":
         device_id = device['device_id']
         lat = device['latitude']; lon = device['longitude']
         print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lon}) {'='*20}")
+        status = {'level': 0, 'message': 'OK'}
 
         history_df, status = helpers.get_sensor_history(device_id, status)
         if history_df is None or history_df.empty:
