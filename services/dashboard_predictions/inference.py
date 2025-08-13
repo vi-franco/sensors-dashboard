@@ -6,9 +6,6 @@ from datetime import datetime, timezone
 import config
 import utils
 
-import prediction_module
-import action_suggestion_module
-
 from colab_models.actuator_classification.run_inference import run_inference as run_classification_inference
 
 if __name__ == "__main__":
