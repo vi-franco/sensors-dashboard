@@ -11,8 +11,6 @@ from influxdb import InfluxDBClient
 from datetime import datetime, timezone, timedelta
 import config
 import pandas as pd
-from timezonefinder import TimezoneFinder
-import pytz # timezonefinder a volte ha bisogno di pytz
 
 # ==============================================================================
 # --- DATA FETCHING FUNCTIONS ---
@@ -46,7 +44,8 @@ def manage_weather_history(device_id, lat, lon):
             response = requests.get(url, timeout=10)
             response.raise_for_status()
             api_response_data = response.json()
-            
+
+            timezone_shift = api_response_data.get('timezone', 0)
             current_weather = {
                 "temperature_external": api_response_data['main']['temp'],
                 "humidity_external": api_response_data['main']['humidity'],
@@ -57,7 +56,9 @@ def manage_weather_history(device_id, lat, lon):
                 "lat": lat,
                 "lng": lon,
                 "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat(),
+                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
+                "utc_datetime": datetime.fromtimestamp(api_response_data['dt'], timezone.utc).isoformat(),
+                "local_datetime" datetime.fromtimestamp(api_response_data['dt'] + timezone_shift, timezone.utc).isoformat(),
                 "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
                 "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity'])
             }
