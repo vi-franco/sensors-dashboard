@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timezone
 import config
 import helpers
+import pandas as pd
 
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
@@ -51,7 +52,7 @@ if __name__ == "__main__":
 
         pd.set_option('display.max_columns', None)
         pd.set_option('display.width', 1000) # Allarga la visualizzazione orizzontale
-        
+
         print(f"\n[DEBUG] Controllo le prime 5 righe del DataFrame per il device {device_id}...")
         print("Queste sono le colonne che la funzione di inferenza riceve:")
         print(merged_df.head())
