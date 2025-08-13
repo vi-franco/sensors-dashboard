@@ -117,7 +117,10 @@ def manage_weather_history(device_id, lat, lon):
         .ffill()
         .bfill()
     )
-
+    weather_df_resampled = weather_df_resampled.copy()
+    weather_df_resampled["utc_datetime"] = weather_df_resampled.index
+    return weather_df_resampled
+    
     print(f"[LOG] Weather history for {device_id} managed. {len(weather_df_resampled)} records available.")
     return weather_df_resampled
 

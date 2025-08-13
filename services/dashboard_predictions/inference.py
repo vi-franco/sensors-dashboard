@@ -49,6 +49,7 @@ if __name__ == "__main__":
         weather_history_df.index.name = 'utc_datetime'
         merged_df = history_df.join(weather_history_df, how='left')
         merged_df = merged_df.ffill().bfill()
+        merged_df = merged_df.infer_objects(copy=False)
 
         pd.set_option('display.max_columns', None)
         pd.set_option('display.width', 1000) # Allarga la visualizzazione orizzontale
