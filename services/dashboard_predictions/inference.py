@@ -48,7 +48,9 @@ if __name__ == "__main__":
 
         weather_history_df.index.name = 'utc_datetime'
         merged_df = history_df.join(weather_history_df, how='left')
-        merged_df = merged_df.ffill().bfill()
+        merged_df = merged_df.reset_index().rename(columns={"index": "utc_datetime"})
+        num_cols = merged_df.select_dtypes(include="number").columns
+        merged_df[num_cols] = merged_df[num_cols].ffill().bfill()
         merged_df = merged_df.infer_objects(copy=False)
 
         pd.set_option('display.max_columns', None)
