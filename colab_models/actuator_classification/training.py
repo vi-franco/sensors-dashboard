@@ -18,7 +18,7 @@ import os
 
 CURRENT_DIR = Path(__file__).parent
 PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
-sys.path.insert(0, str(PROJECT_ROOT))  # solo la root
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
 from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names
