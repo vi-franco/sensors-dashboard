@@ -50,9 +50,9 @@ if __name__ == "__main__":
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
 
-        merged_df = sensor_df.join(weather_df, how='left')
+        merged_df = history_df.join(weather_df, how='left')
         if not weather_df.empty:
-            weather_cols = weather_df.columns.difference(sensor_df.columns)
+            weather_cols = weather_df.columns.difference(history_df.columns)
             merged_df[weather_cols] = merged_df[weather_cols].ffill()
 
         states, probs, class_status = run_classification_inference(merged_df)
