@@ -237,98 +237,108 @@ except Exception as e:
     print(f"⚠️ Impossibile salvare le figure di training: {e}")
 
 # ==============================================================================
-# SEZIONE 5 — ANALISI DETTAGLIATA E VALUTAZIONE
+# SEZIONE 5 — ANALISI DETTAGLIATA E VALUTAZIONE (robusta ai NaN/Inf)
 # ==============================================================================
-
 print("\n--- [SEZIONE 5] Inizio Analisi Dettagliata e Valutazione ---")
 
 if test_df.empty:
     print("⚠️ Test set non disponibile, salto la valutazione dettagliata.")
 else:
-    # Utility per RH da T (°C) e AH (g/m^3)
-    def calculate_relative_humidity(temp_c, abs_hum_gm3):
-        if pd.isna(temp_c) or pd.isna(abs_hum_gm3):
-            return np.nan
-        T = float(temp_c)
-        AH = float(abs_hum_gm3)
-        # Magnus (T in °C, es in hPa)
-        es = 6.112 * np.exp((17.62 * T) / (243.12 + T))
-        # relazione AH = 216.7 * (e / (T+273.15))  => e = AH * (T+273.15) / 216.7
-        e = AH * (T + 273.15) / 216.7
-        rh = 100.0 * e / es
-        return float(np.clip(rh, 0.0, 100.0))
+    # 1) Utility
+    def safe_mae(y_true, y_pred):
+        m = np.isfinite(y_true) & np.isfinite(y_pred)
+        if not np.any(m):
+            return np.nan, 0
+        return float(np.mean(np.abs(y_true[m] - y_pred[m]))), int(m.sum())
 
-    # Predizione sul test
+    def sanitize_inplace(df, cols):
+        for c in cols:
+            if c in df.columns:
+                s = pd.to_numeric(df[c], errors="coerce")
+                s = s.replace([np.inf, -np.inf], np.nan)
+                df[c] = s
+
+    # 2) Predizioni sul test (delta -> assolute) + sanificazione
     X_test_df = test_df[features_for_model]
     X_test_scaled = x_scaler.transform(X_test_df)
     y_pred_scaled = model.predict(X_test_scaled, verbose=1)
     y_pred_delta = y_scaler.inverse_transform(y_pred_scaled)
 
-    # Ricostruisco predizioni assolute
+    # Avviso se inverse_transform produce non finiti
+    if not np.all(np.isfinite(y_pred_delta)):
+        bad = np.logical_not(np.isfinite(y_pred_delta)).sum()
+        print(f"⚠️ Predizioni non finite dopo inverse_transform: {bad} valori")
+
     results_df = test_df[["device", "utc_datetime"]].copy()
+    pred_cols = []
     for i, name in enumerate(targets):
         base_col = name.split("_pred_")[0]
+        out_col = f"pred_absolute_{name}"
         if base_col in test_df.columns:
-            results_df[f"pred_absolute_{name}"] = test_df[base_col].values + y_pred_delta[:, i]
+            pred = test_df[base_col].to_numpy(dtype=float) + y_pred_delta[:, i]
+        else:
+            pred = np.full((len(test_df),), np.nan, dtype=float)
+        results_df[out_col] = pred
+        pred_cols.append(out_col)
 
-    # MAE e percentili di errore per ogni orizzonte/variabile
-    PREDICTION_HORIZONS = horizons
-    SENSOR_TARGETS = columns_to_predict
+    # Sanifica predizioni
+    sanitize_inplace(results_df, pred_cols)
 
+    # Sanifica colonne eval nel test
+    PREDICTION_HORIZONS = [15, 30, 60]
+    SENSOR_TARGETS = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
+    eval_cols = []
+    for h in PREDICTION_HORIZONS:
+        for v in SENSOR_TARGETS:
+            col = f"{v}_eval_{h}m"
+            if col in test_df.columns:
+                eval_cols.append(col)
+    sanitize_inplace(test_df, eval_cols)
+
+    # 3) Metriche per variabile/orizzonte
     mae_rows = []
     for h in PREDICTION_HORIZONS:
         print(f"\nOrizzonte @ {h} min:")
         for var in SENSOR_TARGETS:
             eval_col = f"{var}_eval_{h}m"
             pred_col = f"pred_absolute_{var}_pred_{h}m"
-            if eval_col in test_df.columns and pred_col in results_df.columns:
-                true_abs = test_df[eval_col].values
-                pred_abs = results_df[pred_col].values
-                abs_error = np.abs(true_abs - pred_abs)
-                mae = float(np.mean(abs_error))
+            if eval_col not in test_df.columns or pred_col not in results_df.columns:
+                print(f"  - {var:<12}: N/A (colonne mancanti)")
+                continue
+
+            true_abs = test_df[eval_col].to_numpy(dtype=float)
+            pred_abs = results_df[pred_col].to_numpy(dtype=float)
+
+            mae, n_valid = safe_mae(true_abs, pred_abs)
+            unit_map = {
+                "temperature_sensor": "°C",
+                "absolute_humidity_sensor": "g/m³",
+                "co2": "ppm",
+                "voc": "index",
+            }
+            unit = unit_map.get(var, "")
+            var_name = var.replace("_sensor", "").replace("absolute_humidity", "umid_abs")
+
+            if np.isnan(mae):
+                print(f"  - {var_name:<12}: MAE = N/A (0 campioni validi)")
+            else:
+                # Percentili solo sui validi
+                m = np.isfinite(true_abs) & np.isfinite(pred_abs)
+                abs_error = np.abs(true_abs[m] - pred_abs[m])
                 p50 = float(np.percentile(abs_error, 50))
                 p90 = float(np.percentile(abs_error, 90))
                 p95 = float(np.percentile(abs_error, 95))
-
-                unit_map = {
-                    "temperature_sensor": "°C",
-                    "absolute_humidity_sensor": "g/m³",
-                    "co2": "ppm",
-                    "voc": "index",
-                }
-                unit = unit_map.get(var, "")
-                var_name = var.replace("_sensor", "").replace("absolute_humidity", "umid_abs")
-
-                print(f"  - {var_name:<12}: MAE = {mae:.3f} {unit}")
+                print(f"  - {var_name:<12}: MAE = {mae:.3f} {unit}  (validi={n_valid})")
                 print(f"    └─ Percentili (P50/P90/P95): {p50:.3f} / {p90:.3f} / {p95:.3f} {unit}")
-
                 mae_rows.append({"h_min": h, "var": var_name, "mae": mae})
 
-        # Umidità relativa derivata (se disponibile)
-        rh_eval_col = f"humidity_sensor_eval_{h}m"
-        t_pred_col = f"pred_absolute_temperature_sensor_pred_{h}m"
-        ah_pred_col = f"pred_absolute_absolute_humidity_sensor_pred_{h}m"
-        if rh_eval_col in test_df.columns and t_pred_col in results_df.columns and ah_pred_col in results_df.columns:
-            true_rh = test_df[rh_eval_col].values
-            pred_temp = results_df[t_pred_col].values
-            pred_abs_hum = results_df[ah_pred_col].values
-            pred_rh = np.vectorize(calculate_relative_humidity)(pred_temp, pred_abs_hum)
-            valid_mask = ~np.isnan(true_rh) & ~np.isnan(pred_rh)
-            if np.any(valid_mask):
-                abs_error_rh = np.abs(true_rh[valid_mask] - pred_rh[valid_mask])
-                mae_rh = float(np.mean(abs_error_rh))
-                p50_rh = float(np.percentile(abs_error_rh, 50))
-                p90_rh = float(np.percentile(abs_error_rh, 90))
-                p95_rh = float(np.percentile(abs_error_rh, 95))
-                print(f"  - {'Umidità Rel':<12}: MAE = {mae_rh:.3f} %")
-                print(f"    └─ Percentili (P50/P90/P95): {p50_rh:.3f} / {p90_rh:.3f} / {p95_rh:.3f} %")
-                mae_rows.append({"h_min": h, "var": "RH", "mae": mae_rh})
-
-    # Salvo figura con MAE per orizzonte/variabile (se ho righe)
+    # 4) Figure MAE
     if mae_rows:
         mae_df_plot = pd.DataFrame(mae_rows)
         for h in sorted(mae_df_plot["h_min"].unique()):
-            sub = mae_df_plot[mae_df_plot["h_min"] == h]
+            sub = mae_df_plot[mae_df_plot["h_min"] == h].dropna(subset=["mae"])
+            if sub.empty:
+                continue
             plt.figure()
             plt.bar(sub["var"], sub["mae"])
             plt.title(f"MAE per variabile @ {h} min")
@@ -340,11 +350,10 @@ else:
             plt.close()
         print("📊 Figure MAE salvate nella cartella output.")
 
-    # Analisi per scenari di stato attuatori (se presenti colonne state_)
+    # 5) Analisi per stato attuatori (@15m) — robusta ai NaN
     print("\n--- Analisi MAE per Stato Attuatore (@15m) ---")
     STATE_COLS = [c for c in test_df.columns if c.startswith("state_")]
     if STATE_COLS:
-        # Ricavo la lista attuatori dal prefisso
         ALL_ACTUATORS = [c.replace("state_", "") for c in STATE_COLS]
         scenarios = {"Tutto Spento": (test_df[STATE_COLS].sum(axis=1) == 0)}
         for act in ALL_ACTUATORS:
@@ -355,58 +364,63 @@ else:
         header = f"{'Scenario':<20} | {'MAE Temp':<10} | {'MAE Umid Abs':<12} | {'MAE CO₂':<10} | {'MAE VOC':<10}"
         print(header)
         print("-" * len(header))
+
         for name, mask in scenarios.items():
-            subset_idx = mask[mask].index
-            subset_true = test_df.loc[subset_idx]
-            subset_pred = results_df.loc[subset_idx]
-            if len(subset_true) > 5:
-                has_all = all(
-                    f"{v}_eval_15m" in subset_true.columns and f"pred_absolute_{v}_pred_15m" in subset_pred.columns
-                    for v in SENSOR_TARGETS
-                )
-                if has_all:
-                    maes = {
-                        v: mean_absolute_error(subset_true[f"{v}_eval_15m"], subset_pred[f"pred_absolute_{v}_pred_15m"])
-                        for v in SENSOR_TARGETS
-                    }
-                    print(
-                        f"{name:<20} | "
-                        f"{maes['temperature_sensor']:<10.2f} | "
-                        f"{maes['absolute_humidity_sensor']:<12.2f} | "
-                        f"{maes['co2']:<10.2f} | "
-                        f"{maes['voc']:<10.2f}"
-                    )
-                else:
-                    print(f"{name:<20} | {'N/A (dati mancanti)':-^53}")
-            else:
+            idx = mask[mask].index
+            if len(idx) <= 5:
                 print(f"{name:<20} | {'N/A (campioni < 5)':-^53}")
+                continue
+
+            row = []
+            for v in SENSOR_TARGETS:
+                true_col = f"{v}_eval_15m"
+                pred_col = f"pred_absolute_{v}_pred_15m"
+                if true_col not in test_df.columns or pred_col not in results_df.columns:
+                    row.append(np.nan); continue
+                y_t = test_df.loc[idx, true_col].to_numpy(dtype=float)
+                y_p = results_df.loc[idx, pred_col].to_numpy(dtype=float)
+                m = np.isfinite(y_t) & np.isfinite(y_p)
+                if np.any(m):
+                    row.append(float(np.mean(np.abs(y_t[m] - y_p[m]))))
+                else:
+                    row.append(np.nan)
+
+            fmt = lambda x, w: (f"{x:<{w}.2f}" if np.isfinite(x) else f"{'N/A':<{w}}")
+            print(
+                f"{name:<20} | "
+                f"{fmt(row[0],10)} | {fmt(row[1],12)} | {fmt(row[2],10)} | {fmt(row[3],10)}"
+            )
     else:
         print("ℹ️ Nessuna colonna di stato attuatori (state_*) trovata: salto l’analisi per scenari.")
 
-    # Salvataggio casi estremi (95° percentile errore) per ciascuna variabile/orizzonte
+    # 6) Casi estremi (95° percentile) — solo su coppie finite
     print("\nSalvataggio casi estremi per analisi…")
     extreme_cases_all = []
     for h in PREDICTION_HORIZONS:
         for var in SENSOR_TARGETS:
             eval_col = f"{var}_eval_{h}m"
             pred_col = f"pred_absolute_{var}_pred_{h}m"
-            if eval_col in test_df.columns and pred_col in results_df.columns:
-                true_vals = test_df[eval_col].values
-                pred_vals = results_df[pred_col].values
-                abs_error = np.abs(true_vals - pred_vals)
-                if len(abs_error) == 0:
-                    continue
-                threshold = np.percentile(abs_error, 95)
-                extreme_idx = np.where(abs_error >= threshold)[0]
-                if len(extreme_idx) == 0:
-                    continue
-                df_ext = results_df.iloc[extreme_idx].copy()
-                df_ext["var"] = var
-                df_ext["horizon_min"] = h
-                df_ext["y_true"] = true_vals[extreme_idx]
-                df_ext["y_pred"] = pred_vals[extreme_idx]
-                df_ext["abs_error"] = abs_error[extreme_idx]
-                extreme_cases_all.append(df_ext)
+            if eval_col not in test_df.columns or pred_col not in results_df.columns:
+                continue
+            y_t = test_df[eval_col].to_numpy(dtype=float)
+            y_p = results_df[pred_col].to_numpy(dtype=float)
+            m = np.isfinite(y_t) & np.isfinite(y_p)
+            if not np.any(m):
+                continue
+            abs_err = np.abs(y_t[m] - y_p[m])
+            thr = np.percentile(abs_err, 95)
+            # Reindicizza sugli indici originali validi
+            valid_idx = test_df.index[m]
+            extreme_idx = valid_idx[np.where(abs_err >= thr)[0]]
+            if len(extreme_idx) == 0:
+                continue
+            df_ext = results_df.loc[extreme_idx].copy()
+            df_ext["var"] = var
+            df_ext["horizon_min"] = h
+            df_ext["y_true"] = test_df.loc[extreme_idx, eval_col].to_numpy(dtype=float)
+            df_ext["y_pred"] = results_df.loc[extreme_idx, pred_col].to_numpy(dtype=float)
+            df_ext["abs_error"] = np.abs(df_ext["y_true"] - df_ext["y_pred"])
+            extreme_cases_all.append(df_ext)
 
     if extreme_cases_all:
         df_extreme_all = pd.concat(extreme_cases_all, ignore_index=True)
