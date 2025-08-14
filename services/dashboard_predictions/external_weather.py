@@ -22,7 +22,7 @@ def get_unique_locations(cur):
 
 def fetch_weather_from_api(lat, lng):
     """Chiama l'API di OpenWeatherMap."""
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lng={lng}&appid={config.OWM_API_KEY}&units=metric"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lng}&appid={config.OWM_API_KEY}&units=metric"
     print(f"Chiamata API per ({lat}, {lng})...")
     try:
         response = requests.get(url, timeout=15)
