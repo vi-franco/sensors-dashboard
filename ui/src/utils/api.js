@@ -2,7 +2,7 @@
 
 export const API_URL =
     (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) ||
-    'http://192.168.20.73:5500';
+    'http://192.168.20.119:5500';
 
 export const formatValue = (value, decimals = 0) => {
     if (value === null || value === undefined || isNaN(value)) return 'N/A';
