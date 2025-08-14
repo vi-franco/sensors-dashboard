@@ -44,6 +44,13 @@ def get_external_weather_df(lat: float, lng: float) -> pd.DataFrame:
     df['utc_datetime'] = pd.to_datetime(df['dt'], unit='s', utc=True)
     df = df.set_index('utc_datetime')
 
+    four_hours_ago = now_utc - pd.Timedelta(hours=4)
+    if not df.empty and df.index[0] > four_hours_ago:
+            oldest_row = df.iloc[0].copy()
+            df.loc[four_hours_ago] = oldest_row
+            df.sort_index(inplace=True)
+            print(f"Dati meteo estesi artificialmente fino a 4 ore fa.")
+
     now_utc = pd.Timestamp.now(tz='UTC')
     df.loc[now_utc] = df.iloc[-1].copy()
 
