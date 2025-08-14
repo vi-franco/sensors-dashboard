@@ -122,18 +122,27 @@ if data_for_training.empty:
 
 # Ordine temporale per split train/val causale
 df_train_sorted = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
-X_df = df_train_sorted[features_for_model]
-y_df = df_train_sorted[targets]
+X_df = df_train_sorted[features_for_model].copy()
+y_df = df_train_sorted[targets].copy()
+
+# 2.1) Sanitize: rimpiazza Inf con NaN e droppa righe con NaN in X o y
+X_df = X_df.replace([np.inf, -np.inf], np.nan)
+y_df = y_df.replace([np.inf, -np.inf], np.nan)
+mask_ok = (~X_df.isna().any(axis=1)) & (~y_df.isna().any(axis=1))
+dropped = len(X_df) - int(mask_ok.sum())
+if dropped > 0:
+    print(f"🧹 Rimosse {dropped} righe non valide (NaN/Inf in feature o target) prima dello split.")
+X_df = X_df.loc[mask_ok]
+y_df = y_df.loc[mask_ok]
 
 val_split_percentage = 0.2
 split_point_tv = int(len(X_df) * (1 - val_split_percentage))
-
 X_train, X_val = X_df.iloc[:split_point_tv], X_df.iloc[split_point_tv:]
 y_train, y_val = y_df.iloc[:split_point_tv], y_df.iloc[split_point_tv:]
 
 print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione.")
 
-# Scaling solo su TRAIN
+# 2.2) Scaling solo su TRAIN
 x_scaler = StandardScaler().fit(X_train)
 y_scaler = StandardScaler().fit(y_train)
 
@@ -141,6 +150,16 @@ X_train_s = x_scaler.transform(X_train).astype("float32")
 X_val_s   = x_scaler.transform(X_val).astype("float32")
 y_train_s = y_scaler.transform(y_train).astype("float32")
 y_val_s   = y_scaler.transform(y_val).astype("float32")
+
+# 2.3) Verifica che tutto sia finito (niente NaN/Inf) prima del fit
+def _check_finite(name, arr):
+    if not np.all(np.isfinite(arr)):
+        bad = np.logical_not(np.isfinite(arr)).sum()
+        raise ValueError(f"{name} contiene {bad} valori non finiti. Controlla pipeline/feature.")
+_check_finite("X_train_s", X_train_s)
+_check_finite("y_train_s", y_train_s)
+_check_finite("X_val_s",   X_val_s)
+_check_finite("y_val_s",   y_val_s)
 
 def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0.1, lr=3e-4):
     inp = layers.Input(shape=(input_dim,))
