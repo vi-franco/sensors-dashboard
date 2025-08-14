@@ -98,6 +98,11 @@ before = len(df)
 df.dropna(subset=targets, inplace=True)
 print(f"Righe rimosse per target NaN/Inf: {before - len(df)}")
 
+# print first few rows for debugging completi, non solo head
+print("Esempi di feature e target:")
+print(df[features_for_model + targets].head(5).to_string(index=False))
+
+
 # Split per period_id (shuffle + 80/20)
 all_period_ids = pd.Series(df["period_id"]).dropna().unique()
 rng = np.random.RandomState(42)
