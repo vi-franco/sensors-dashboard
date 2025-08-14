@@ -7,8 +7,6 @@ def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_in_out_delta_features(df)
     df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"])
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
-    df = add_device_baselines(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
-    df = add_since_minutes(df)
     df = add_event_flags(df)
     return df
 
@@ -65,48 +63,29 @@ def final_features_actuator_classification() -> list:
         "temperature_external_trend_5m","temperature_external_trend_30m",
         "absolute_humidity_external_trend_5m","absolute_humidity_external_trend_30m",
 
-        # Baseline delta
-        "co2_baseline_delta","voc_baseline_delta",
-        "temperature_sensor_baseline_delta","absolute_humidity_sensor_baseline_delta",
-
         # Flag eventi
-        "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","ah_rise_flag_5m",
+        "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","temp_rise_flag_5m", "ah_drop_flag_5m","ah_rise_flag_5m",
 
-        # Since minutes per attuatore
-        "since_minutes_Umidificatore",
-        "since_minutes_Finestra",
-        "since_minutes_Deumidificatore",
-        "since_minutes_Riscaldamento",
-        "since_minutes_Clima",
+        "temperature_sensor_mean_60m",
+        "temperature_sensor_std_60m",
 
-        # Rolling lunghi (60m, 180m)
-        "temperature_sensor_trend_60m", "temperature_sensor_trend_180m",
-        "temperature_sensor_mean_60m",  "temperature_sensor_mean_180m",
-        "temperature_sensor_std_60m",   "temperature_sensor_std_180m",
+        "absolute_humidity_sensor_mean_60m",
+        "absolute_humidity_sensor_std_60m",
 
-        "absolute_humidity_sensor_trend_60m", "absolute_humidity_sensor_trend_180m",
-        "absolute_humidity_sensor_mean_60m",  "absolute_humidity_sensor_mean_180m",
-        "absolute_humidity_sensor_std_60m",   "absolute_humidity_sensor_std_180m",
+        "co2_mean_60m",
+        "co2_std_60m",
 
-        "co2_trend_60m", "co2_trend_180m",
-        "co2_mean_60m",  "co2_mean_180m",
-        "co2_std_60m",   "co2_std_180m",
+        "voc_mean_60m",
+        "voc_std_60m",
 
-        "voc_trend_60m", "voc_trend_180m",
-        "voc_mean_60m",  "voc_mean_180m",
-        "voc_std_60m",   "voc_std_180m",
+        "temp_diff_in_out_mean_60m",
+        "temp_diff_in_out_std_60m",
 
-        "temp_diff_in_out_trend_60m", "temp_diff_in_out_trend_180m",
-        "temp_diff_in_out_mean_60m",  "temp_diff_in_out_mean_180m",
-        "temp_diff_in_out_std_60m",   "temp_diff_in_out_std_180m",
+        "ah_diff_in_out_mean_60m",
+        "ah_diff_in_out_std_60m",
 
-        "ah_diff_in_out_trend_60m", "ah_diff_in_out_trend_180m",
-        "ah_diff_in_out_mean_60m",  "ah_diff_in_out_mean_180m",
-        "ah_diff_in_out_std_60m",   "ah_diff_in_out_std_180m",
-
-        "dewpoint_diff_in_out_trend_60m", "dewpoint_diff_in_out_trend_180m",
-        "dewpoint_diff_in_out_mean_60m",  "dewpoint_diff_in_out_mean_180m",
-        "dewpoint_diff_in_out_std_60m",   "dewpoint_diff_in_out_std_180m",
+        "dewpoint_diff_in_out_mean_60m",
+        "dewpoint_diff_in_out_std_60m",
     ]
 
 def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
@@ -134,42 +113,11 @@ def add_in_out_delta_features(df: pd.DataFrame) -> pd.DataFrame:
     df["temp_diff_x_wind"] = df["temp_diff_in_out"] * df["wind_speed"].fillna(0)
     return df
 
-def add_since_minutes(df: pd.DataFrame,
-                      actuator_state_cols: list | None = None,
-                      initial_since_value: float = 0.0) -> pd.DataFrame:
-    df = df.copy()
-    df["_dt_utc_parsed"] = pd.to_datetime(df["utc_datetime"], errors="coerce", utc=True)
-    df = df.sort_values(["device", "_dt_utc_parsed"])
-
-    if actuator_state_cols is None:
-        actuator_state_cols = [c for c in df.columns if c.startswith("state_")]
-
-    for scol in actuator_state_cols:
-        suffix = scol.split("state_", 1)[1] if "state_" in scol else scol
-        out_col = f"since_minutes_{suffix}"
-
-        def _since_per_group(g: pd.DataFrame) -> pd.Series:
-            s = g[scol].astype("float").round().fillna(method="ffill").fillna(0).astype(int)
-            change_mask = s.ne(s.shift(1, fill_value=s.iloc[0]))
-            change_time = g["_dt_utc_parsed"].where(change_mask)
-            last_change_time = change_time.ffill()
-            first_time = g["_dt_utc_parsed"].iloc[0]
-            last_change_time = last_change_time.fillna(first_time)
-            delta_min = (g["_dt_utc_parsed"] - last_change_time).dt.total_seconds() / 60.0
-            if initial_since_value is not None and len(delta_min) > 0:
-                delta_min.iloc[0] = initial_since_value
-            return delta_min
-
-        df[out_col] = df.groupby("device", group_keys=False).apply(_since_per_group)
-
-    df.drop(columns=["_dt_utc_parsed"], inplace=True, errors="ignore")
-    return df
-
 def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     feature_config = {
-        'trend': [5, 30],
-        'mean': [30, 60, 180],
-        'std': [30, 60, 180],
+        'trend': [5, 15, 30],
+        'mean': [15, 30, 60],
+        'std': [15, 30, 60],
         'accel': 5
     }
     df = df.sort_values(by=["device", "utc_datetime"])
@@ -199,18 +147,13 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
             df[f"{c}_accel_1m"] = df.groupby("device")[trend_col].diff()
     return df
 
-def add_external_trends(df: pd.DataFrame, cols: list, win_short: int = 5, win_long: int = 30) -> pd.DataFrame:
+def add_external_trends(df: pd.DataFrame, cols: list) -> pd.DataFrame:
+    win_short = 5
+    win_long = 30
     for c in cols:
         g = df.groupby("device")[c]
         df[f"{c}_trend_{win_short}m"] = g.diff(win_short)
         df[f"{c}_trend_{win_long}m"]  = g.diff(win_long)
-    return df
-
-
-def add_device_baselines(df: pd.DataFrame, cols: list, window_minutes: int = 1440) -> pd.DataFrame:
-    for c in cols:
-        base = df.groupby("device")[c].rolling(window_minutes, min_periods=60).median().reset_index(level=0, drop=True)
-        df[f"{c}_baseline_delta"] = df[c] - base
     return df
 
 
@@ -225,5 +168,7 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
     df["co2_drop_flag_5m"]  = drop_flag("co2")
     df["voc_drop_flag_5m"]  = drop_flag("voc")
     df["temp_drop_flag_5m"] = drop_flag("temperature_sensor")
+    df["temp_rise_flag_5m"] = rise_flag("temperature_sensor")
+    df["ah_drop_flag_5m"]   = drop_flag("absolute_humidity_sensor")
     df["ah_rise_flag_5m"]   = rise_flag("absolute_humidity_sensor")
     return df

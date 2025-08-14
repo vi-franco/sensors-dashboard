@@ -111,30 +111,30 @@ log_actuator_stats(test_df, "Test Set")
 print("✅ [SEZIONE 4] OK.")
 
 # ==============================================================================
-# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (K-Fold multilabel)
+# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Time-Series Cross-Validation)
 # ==============================================================================
-print("\n--- [SEZIONE 5] Addestramento e Valutazione ---")
+print("\n--- [SEZIONE 5] Addestramento e Valutazione con TimeSeriesSplit ---")
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
     roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 )
-from skmultilearn.model_selection import IterativeStratification
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 if data_for_training.empty:
     raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
 
-# Shuffle e selezione X/y
-df_train = data_for_training.sample(frac=1, random_state=42).reset_index(drop=True)
+df_train = data_for_training.sort_values('utc_datetime').reset_index(drop=True)
 
+features = final_features_actuator_classification() # Assumendo che questa funzione esista
+targets = ALL_ACTUATORS # Assumendo che questa lista esista
 X_df = df_train[features]
 X_df = X_df.fillna(X_df.mean())
-
 y_df = df_train[targets].astype(int)
 
-
 N_SPLITS = 5
-kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
+tscv = TimeSeriesSplit(n_splits=N_SPLITS)
 
 def create_model(input_dim, output_dim):
     inp = Input(shape=(input_dim,))
@@ -149,16 +149,17 @@ def create_model(input_dim, output_dim):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=5e-4),
         loss="binary_crossentropy",
-        metrics=["binary_accuracy","precision","recall"]
+        metrics=["binary_accuracy", "precision", "recall"]
     )
     return model
 
 histories, all_y_val, all_y_pred_probs = [], [], []
 
-for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
+for fold_no, (tr_idx, va_idx) in enumerate(tscv.split(X_df), 1):
     print(f"---------------- Fold {fold_no}/{N_SPLITS} ----------------")
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
     y_tr, y_va = y_df.iloc[tr_idx], y_df.iloc[va_idx]
+
     scaler = StandardScaler()
     X_tr_s = scaler.fit_transform(X_tr)
     X_va_s = scaler.transform(X_va)
@@ -170,11 +171,10 @@ for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
     histories.append(history)
 
     preds = model.predict(X_va_s, verbose=0)
-
     all_y_val.append(y_va.values)
     all_y_pred_probs.append(preds)
 
-# Aggrego validazione
+# Aggrego i risultati di tutti i fold di validazione
 y_val_all = np.concatenate(all_y_val, axis=0)
 y_pred_probs_all = np.concatenate(all_y_pred_probs, axis=0)
 
