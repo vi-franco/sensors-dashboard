@@ -82,7 +82,6 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
 
         df['utc_datetime'] = pd.to_datetime(df['time'])
         df = df.set_index('utc_datetime').sort_index()
-        df_final.reset_index(inplace=True)
 
         expected_numeric = ['temperature', 'humidity', 'co2', 'voc']
         numeric_cols = [col for col in expected_numeric if col in df.columns]
@@ -96,6 +95,7 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
 
         df_final = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
         df_final['device'] = device_id
+        df_final.reset_index(inplace=True)
 
         df_final['dew_point_sensor'] = df_final.apply(
             lambda row: calculate_dew_point(row['temperature_sensor'], row['humidity_sensor']),
