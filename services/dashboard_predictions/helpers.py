@@ -65,7 +65,7 @@ def get_external_weather_df(lat: float, lon: float) -> pd.DataFrame:
 
     return df_final[[col for col in final_columns if col in df_final.columns]]
 
-def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[Optional[pd.DataFrame], dict[str, Any]]:
+def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     try:
         client = InfluxDBClient(
             host=config.INFLUXDB_HOST,
