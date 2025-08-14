@@ -20,19 +20,19 @@ def get_unique_locations(cur):
         print(f"Errore DB nel leggere le coordinate: {e}", file=sys.stderr)
         return []
 
-def fetch_weather_from_api(lat, lon):
+def fetch_weather_from_api(lat, lng):
     """Chiama l'API di OpenWeatherMap."""
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={config.OWM_API_KEY}&units=metric"
-    print(f"Chiamata API per ({lat}, {lon})...")
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lng={lng}&appid={config.OWM_API_KEY}&units=metric"
+    print(f"Chiamata API per ({lat}, {lng})...")
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Errore API per ({lat}, {lon}): {e}", file=sys.stderr)
+        print(f"Errore API per ({lat}, {lng}): {e}", file=sys.stderr)
         return None
 
-def save_weather_data(cur, lat, lon, data):
+def save_weather_data(cur, lat, lng, data):
     """Salva i nuovi dati meteo nel database, ignorando i duplicati."""
     if not data:
         return
@@ -44,7 +44,7 @@ def save_weather_data(cur, lat, lon, data):
         record_tuple = (
             data.get('dt'),
             float(lat),
-            float(lon),
+            float(lng),
             data.get('main', {}).get('temp'),
             data.get('main', {}).get('humidity'),
             data.get('main', {}).get('pressure'),
@@ -64,14 +64,14 @@ def save_weather_data(cur, lat, lon, data):
         """, record_tuple)
 
         if cur.rowcount > 0:
-            print(f"Dati per ({lat}, {lon}) con timestamp {data.get('dt')} salvati.")
+            print(f"Dati per ({lat}, {lng}) con timestamp {data.get('dt')} salvati.")
         else:
-            print(f"Dati per ({lat}, {lon}) con timestamp {data.get('dt')} già presenti, ignorati.")
+            print(f"Dati per ({lat}, {lng}) con timestamp {data.get('dt')} già presenti, ignorati.")
 
     except sqlite3.Error as e:
-        print(f"Errore DB nel salvare i dati per ({lat}, {lon}): {e}", file=sys.stderr)
+        print(f"Errore DB nel salvare i dati per ({lat}, {lng}): {e}", file=sys.stderr)
     except KeyError as e:
-        print(f"Formato API inatteso per ({lat}, {lon}). Campo mancante: {e}", file=sys.stderr)
+        print(f"Formato API inatteso per ({lat}, {lng}). Campo mancante: {e}", file=sys.stderr)
 
 def main():
     print("\n--- Avvio script aggiornamento meteo ---")
@@ -92,10 +92,10 @@ def main():
                 return
 
             print(f"Trovate {len(locations)} coordinate uniche da processare.")
-            for lat, lon in locations:
-                weather_data = fetch_weather_from_api(lat, lon)
+            for lat, lng in locations:
+                weather_data = fetch_weather_from_api(lat, lng)
                 if weather_data:
-                    save_weather_data(cur, lat, lon, weather_data)
+                    save_weather_data(cur, lat, lng, weather_data)
 
     except sqlite3.Error as e:
         print(f"Errore DB: {e}", file=sys.stderr)

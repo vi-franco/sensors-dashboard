@@ -9,8 +9,8 @@ const DeviceEditor = ({ device, allActuators, onSave, onCancel, onToggleActuator
         onSave(device.device_id, {
             roomName: editData.room_name,
             locationName: editData.location_name,
-            lat: editData.owm_lat,
-            lon: editData.owm_lon
+            lat: editData.lat,
+            lng: editData.lng
         });
     };
 
@@ -39,8 +39,8 @@ const DeviceEditor = ({ device, allActuators, onSave, onCancel, onToggleActuator
                     <label className="text-xs text-gray-400">Latitude</label>
                     <input
                         type="number"
-                        value={editData.owm_lat || ''}
-                        onChange={(e) => setEditData({ ...editData, owm_lat: e.target.value })}
+                        value={editData.lat || ''}
+                        onChange={(e) => setEditData({ ...editData, lat: e.target.value })}
                         className="w-full p-2 mt-1 rounded-md bg-gray-700 text-white border border-gray-600"
                     />
                 </div>
@@ -48,8 +48,8 @@ const DeviceEditor = ({ device, allActuators, onSave, onCancel, onToggleActuator
                     <label className="text-xs text-gray-400">Longitude</label>
                     <input
                         type="number"
-                        value={editData.owm_lon || ''}
-                        onChange={(e) => setEditData({ ...editData, owm_lon: e.target.value })}
+                        value={editData.lng || ''}
+                        onChange={(e) => setEditData({ ...editData, lng: e.target.value })}
                         className="w-full p-2 mt-1 rounded-md bg-gray-700 text-white border border-gray-600"
                     />
                 </div>
@@ -212,7 +212,7 @@ const SettingsPage = ({
                           isLoading
                       }) => {
     const [editingDeviceId, setEditingDeviceId] = useState(null);
-    const [newDeviceData, setNewDeviceData] = useState({ deviceId: '', locationName: '', lat: '', lon: '' });
+    const [newDeviceData, setNewDeviceData] = useState({ deviceId: '', locationName: '', lat: '', lng: '' });
 
     const handleRegisterClick = () => {
         if (!newDeviceData.deviceId.trim()) {
@@ -220,7 +220,7 @@ const SettingsPage = ({
             return;
         }
         onRegister(newDeviceData);
-        setNewDeviceData({ deviceId: '', locationName: '', lat: '', lon: '' });
+        setNewDeviceData({ deviceId: '', locationName: '', lat: '', lng: '' });
     };
 
     return (
@@ -328,8 +328,8 @@ const SettingsPage = ({
                     />
                     <input
                         type="number"
-                        value={newDeviceData.lon}
-                        onChange={(e) => setNewDeviceData({ ...newDeviceData, lon: e.target.value })}
+                        value={newDeviceData.lng}
+                        onChange={(e) => setNewDeviceData({ ...newDeviceData, lng: e.target.value })}
                         placeholder="Longitude"
                         className="p-2 rounded-md bg-gray-700 text-white border border-gray-600"
                     />

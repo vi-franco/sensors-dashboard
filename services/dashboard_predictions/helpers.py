@@ -17,17 +17,17 @@ from typing import Any
 # --- DATA FETCHING FUNCTIONS ---
 # ==============================================================================
 
-def get_external_weather_df(lat: float, lon: float) -> pd.DataFrame:
+def get_external_weather_df(lat: float, lng: float) -> pd.DataFrame:
     try:
         with sqlite3.connect(config.DB_PATH) as conn:
             query = "SELECT * FROM external_weather WHERE lat = ? AND lng = ? ORDER BY dt;"
-            df = pd.read_sql_query(query, conn, params=(lat, lon))
+            df = pd.read_sql_query(query, conn, params=(lat, lng))
     except sqlite3.Error as e:
         print(f"Errore DB: {e}", file=sys.stderr)
         return pd.DataFrame()
 
     if df.empty:
-        print(f"Nessun dato meteo trovato nel DB per ({lat}, {lon}).")
+        print(f"Nessun dato meteo trovato nel DB per ({lat}, {lng}).")
         return df
 
     rename_map = {
@@ -627,14 +627,14 @@ def load_features_for_device(device_id):
 
     Ritorna: DataFrame a singola riga con colonne nell'ordine richiesto e una colonna 'device_id'.
     """
-    # 1) recupera lat/lon per meteo + lista attuatori abilitati (EN -> IT)
+    # 1) recupera lat/lng per meteo + lista attuatori abilitati (EN -> IT)
     with sqlite3.connect(config.DB_PATH) as con:
         con.row_factory = sqlite3.Row
-        dev = con.execute("SELECT owm_lat, owm_lon FROM devices WHERE device_id = ?", (device_id,)).fetchone()
+        dev = con.execute("SELECT lat, lng FROM devices WHERE device_id = ?", (device_id,)).fetchone()
         if not dev:
             print(f"[ERROR] load_features_for_device: device '{device_id}' non trovato in devices.")
             return None
-        lat, lon = dev["owm_lat"], dev["owm_lon"]
+        lat, lng = dev["lat"], dev["lng"]
 
         act_rows = con.execute(
             "SELECT actuator_name, is_enabled FROM device_actuators WHERE device_id = ? AND is_enabled = 1",
@@ -646,7 +646,7 @@ def load_features_for_device(device_id):
     available_actuators_it = [en_to_it[a] for a in enabled_en if a in en_to_it]
 
     # 2) meteo e history
-    weather_df = manage_weather_history(device_id=device_id, lat=lat, lon=lon)
+    weather_df = manage_weather_history(device_id=device_id, lat=lat, lng=lng)
     status = {'level': 0, 'message': 'OK'}
     history_df, status = get_sensor_history(device_id, status)
     if history_df is None or weather_df is None or weather_df.empty:

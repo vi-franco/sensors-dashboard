@@ -73,14 +73,14 @@ def upsert_hysteresis_en(conn, act_en, th_on, th_off):
     """, (act_en, th_on, th_off, datetime.utcnow().isoformat()))
     conn.commit()
 
-def get_weather_for_device(lat, lon):
+def get_weather_for_device(lat, lng):
     """Fetches weather data from OpenWeatherMap, using a cache."""
-    if not lat or not lon: return None
-    cache_key = f"{lat},{lon}"
+    if not lat or not lng: return None
+    cache_key = f"{lat},{lng}"
     if cache_key in OWM_CACHE and (time.time() - OWM_CACHE[cache_key]['timestamp']) < OWM_CACHE_SECONDS:
         return OWM_CACHE[cache_key]['data']
     
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={OWM_API_KEY}&units=metric"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lng={lng}&appid={OWM_API_KEY}&units=metric"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -203,7 +203,7 @@ def get_full_data():
                 } for row in history_rows]
 
             # weather
-            device_data['externalWeather'] = get_weather_for_device(device['owm_lat'], device['owm_lon'])
+            device_data['externalWeather'] = get_weather_for_device(device['lat'], device['lng'])
 
             # predictions_meta (timestamp generazione predizioni), compatibile se tabella esiste
             if table_exists(conn, "predictions_meta"):
@@ -229,14 +229,14 @@ def api_add_device():
     device_id = data.get('deviceId')
     location_name = data.get('locationName', 'Default')
     lat = data.get('lat', 0.0)
-    lon = data.get('lon', 0.0)
+    lng = data.get('lng', 0.0)
 
     if not device_id: return jsonify({"error": "deviceId is required"}), 400
     with get_db_connection() as conn:
         try:
             conn.execute(
-                "INSERT INTO devices (device_id, room_name, location_name, owm_lat, owm_lon) VALUES (?, NULL, ?, ?, ?)",
-                (device_id, location_name, lat, lon)
+                "INSERT INTO devices (device_id, room_name, location_name, lat, lng) VALUES (?, NULL, ?, ?, ?)",
+                (device_id, location_name, lat, lng)
             )
             for act in ACTUATORS:
                 conn.execute(
@@ -258,8 +258,8 @@ def api_update_device():
         fields_to_update = {}
         if 'roomName' in data: fields_to_update['room_name'] = data['roomName']
         if 'locationName' in data: fields_to_update['location_name'] = data['locationName']
-        if 'lat' in data: fields_to_update['owm_lat'] = data['lat']
-        if 'lon' in data: fields_to_update['owm_lon'] = data['lon']
+        if 'lat' in data: fields_to_update['lat'] = data['lat']
+        if 'lng' in data: fields_to_update['lng'] = data['lng']
         
         if not fields_to_update: return jsonify({"error": "No valid fields to update"}), 400
 

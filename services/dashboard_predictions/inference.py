@@ -29,15 +29,15 @@ if __name__ == "__main__":
     with sqlite3.connect(config.DB_PATH) as con:
         con.row_factory = sqlite3.Row
         devices = con.execute(
-            "SELECT device_id, room_name, location_name, owm_lat as latitude, owm_lon as longitude FROM devices"
+            "SELECT device_id, room_name, location_name, lat as latitude, lng as longitude FROM devices"
         ).fetchall()
         print(f"[DB] Found {len(devices)} devices to process.")
 
     for device in devices:
         device_id = device['device_id']
         lat = device['latitude'];
-        lon = device['longitude']
-        print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lon}) {'='*20}")
+        lng = device['longitude']
+        print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lng}) {'='*20}")
 
         status = {'level': 0, 'message': 'OK'}
         history_df, status = helpers.get_sensor_history(device_id, status)
@@ -45,7 +45,7 @@ if __name__ == "__main__":
             print(f"[ERROR] {status.get('message','No history')} for {device_id}. Skipping.")
             continue
 
-        weather_history_df = helpers.get_external_weather_df(lat=lat, lon=lon)
+        weather_history_df = helpers.get_external_weather_df(lat=lat, lng=lng)
         if weather_history_df is None or weather_history_df.empty:
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue

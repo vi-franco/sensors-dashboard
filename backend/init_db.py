@@ -49,8 +49,8 @@ def initialize_database():
                 device_id       TEXT PRIMARY KEY,
                 room_name       TEXT, -- Nome stanza da mostrare in UI
                 location_name   TEXT, -- Es. "Senise"
-                owm_lat         REAL, -- Latitudine per meteo esterno
-                owm_lon         REAL  -- Longitudine per meteo esterno
+                lat         REAL, -- Latitudine per meteo esterno
+                lng         REAL  -- Longitudine per meteo esterno
             )
         """)
 
