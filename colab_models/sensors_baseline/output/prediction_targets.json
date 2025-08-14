@@ -1,0 +1,14 @@
+[
+  "temperature_sensor_pred_15m",
+  "temperature_sensor_pred_30m",
+  "temperature_sensor_pred_60m",
+  "absolute_humidity_sensor_pred_15m",
+  "absolute_humidity_sensor_pred_30m",
+  "absolute_humidity_sensor_pred_60m",
+  "co2_pred_15m",
+  "co2_pred_30m",
+  "co2_pred_60m",
+  "voc_pred_15m",
+  "voc_pred_30m",
+  "voc_pred_60m"
+]
