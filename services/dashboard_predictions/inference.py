@@ -50,7 +50,12 @@ if __name__ == "__main__":
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
 
-        merged_df = history_df.join(weather_history_df, how='left')
+        merged_df = pd.merge(
+            history_df,
+            weather_history_df,
+            on='utc_datetime',
+            how='left'
+        )
         merged_df.reset_index(inplace=True)
 
         weather_cols = weather_history_df.columns.difference(history_df.columns)
