@@ -137,16 +137,16 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 
         if 'trend' in feature_config:
             for w in feature_config['trend']:
-                df[f"{c}_trend_{w}m"] = g.diff(w).reset_index(level=[0, 1], drop=True)
+                df[f"{c}_trend_{w}m"] = g.diff(w)
 
         if 'accel' in feature_config:
             base_window = feature_config['accel']
             trend_col = f"{c}_trend_{base_window}m"
 
             if trend_col not in df:
-                df[trend_col] = g.diff(base_window).reset_index(level=[0, 1], drop=True)
+                df[trend_col] = g.diff(base_window)
 
-            df[f"{c}_accel_1m"] = df.groupby(["device", "period_id"])[trend_col].diff().reset_index(level=[0, 1], drop=True)
+            df[f"{c}_accel_1m"] = df.groupby(["device", "period_id"])[trend_col].diff()
     return df
 
 def add_external_trends(df: pd.DataFrame, cols: list) -> pd.DataFrame:
