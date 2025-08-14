@@ -66,6 +66,9 @@ print(f"✅ [SEZIONE 2] Completata. Shape: {df.shape}")
 print("\n--- [SEZIONE 4] Definizione Feature e Split Automatico per Periodo ---")
 import numpy as np
 
+columns_to_predict = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
+horizons = [15, 30, 60]
+
 features_for_model = final_features_baseline_prediction()
 targets = [
     f"{col}_pred_{h}m"

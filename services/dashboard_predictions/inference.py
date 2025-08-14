@@ -100,6 +100,37 @@ if __name__ == "__main__":
         helpers.save_results_to_db(record)
 
         # 5) Predizioni e suggerimenti
+        predictions_nested, status_msg = prediction_module.run_prediction_inference(merged_df)
+
+        if not predictions_nested:
+            print(f"[ANALYSIS] Inferenza di previsione fallita per {device_id}: {status_msg}")
+            winning_suggestions = {}
+        else:
+            flat_predictions = {}
+            for horizon, values in predictions_nested.items():
+                horizon_suffix = horizon.replace('min', '')
+                for sensor, value in values.items():
+                    flat_predictions[f"{sensor}_pred_{horizon_suffix}m"] = value
+
+
+            winning_suggestions = []
+
+            #            last_known_states = helpers.get_last_known_states(device_id)
+
+            #winning_suggestions = action_suggestion_module.run_action_suggestions(
+            #    device_id=device_id,
+            #    history_df=history_df,       # Queste funzioni potrebbero ancora volere i DF separati
+            #    weather_df=weather_history_df,
+            #    baseline_predictions=flat_predictions, # Usa le previsioni appiattite
+            #    available_it=available_it,
+            #    last_known_states=last_known_states
+            #)
+
+            # La logica di salvataggio ora funziona con il dizionario appiattito
+            helpers.save_predictions_and_suggestions_to_db(device_id, flat_predictions, winning_suggestions)
+            helpers.save_prediction_timestamp(device_id)
+
+        # 5) Predizioni e suggerimenti
         #predictions, _ = prediction_module.run_prediction(
         #    device_id, history_df, weather_history_df
         #)
