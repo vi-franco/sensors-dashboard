@@ -54,10 +54,10 @@ def final_features_actuator_classification() -> list:
         "hour_sin","hour_cos","minutes_from_sunrise","minutes_to_sunset",
 
         # Rolling 5m/30m interni
-        "temperature_sensor_accel_1m","temperature_sensor_trend_5m","temperature_sensor_trend_30m","temperature_sensor_mean_5m","temperature_sensor_mean_30m","temperature_sensor_std_5m","temperature_sensor_std_30m",
-        "absolute_humidity_sensor_accel_1m", "absolute_humidity_sensor_trend_5m","absolute_humidity_sensor_trend_30m","absolute_humidity_sensor_mean_5m","absolute_humidity_sensor_mean_30m","absolute_humidity_sensor_std_5m","absolute_humidity_sensor_std_30m",
-        "co2_accel_1m","co2_trend_5m","co2_trend_30m","co2_mean_5m","co2_mean_30m","co2_std_5m","co2_std_30m",
-        "voc_accel_1m","voc_trend_5m","voc_trend_30m","voc_mean_5m","voc_mean_30m","voc_std_5m","voc_std_30m",
+        "temperature_sensor_accel_1m","temperature_sensor_trend_5m","temperature_sensor_trend_30m","temperature_sensor_mean_30m","temperature_sensor_std_5m","temperature_sensor_std_30m",
+        "absolute_humidity_sensor_accel_1m", "absolute_humidity_sensor_trend_5m","absolute_humidity_sensor_trend_30m","absolute_humidity_sensor_mean_30m","absolute_humidity_sensor_std_5m","absolute_humidity_sensor_std_30m",
+        "co2_accel_1m","co2_trend_5m","co2_trend_30m","co2_mean_30m","co2_std_5m","co2_std_30m",
+        "voc_accel_1m","voc_trend_5m","voc_trend_30m","voc_mean_30m","voc_std_5m","voc_std_30m",
 
         # Trend esterni
         "temperature_external_trend_5m","temperature_external_trend_30m",
