@@ -54,7 +54,7 @@ def get_external_weather_df(lat: float, lng: float) -> pd.DataFrame:
     df_non_num = df[non_numeric_cols].resample('min').ffill()
 
     df_final = df_num.join(df_non_num)
-    df_final['utc_datetime'] = df_final.index
+    df_final.reset_index(inplace=True)
 
     final_columns = [
         "temperature_external", "humidity_external", "ground_level_pressure",
@@ -82,6 +82,7 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
 
         df['utc_datetime'] = pd.to_datetime(df['time'])
         df = df.set_index('utc_datetime').sort_index()
+        df_final.reset_index(inplace=True)
 
         expected_numeric = ['temperature', 'humidity', 'co2', 'voc']
         numeric_cols = [col for col in expected_numeric if col in df.columns]
@@ -104,6 +105,7 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
             lambda row: calculate_absolute_humidity(row['temperature_sensor'], row['humidity_sensor']),
             axis=1
         )
+
 
         status.update({'message': 'Dati dei sensori elaborati con successo.', 'level': 0})
         return df_final, status
