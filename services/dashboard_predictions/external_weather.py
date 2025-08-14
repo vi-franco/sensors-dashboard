@@ -8,7 +8,7 @@ import time
 
 import requests
 
-from . import config
+import config
 
 def get_unique_locations(cur):
     """Recupera le coordinate uniche dei dispositivi."""
