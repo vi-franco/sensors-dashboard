@@ -127,10 +127,9 @@ if data_for_training.empty:
 
 df_train = data_for_training.sort_values('utc_datetime').reset_index(drop=True)
 
-features = final_features_actuator_classification() # Assumendo che questa funzione esista
-targets = ALL_ACTUATORS # Assumendo che questa lista esista
 X_df = df_train[features]
 X_df = X_df.fillna(X_df.mean())
+
 y_df = df_train[targets].astype(int)
 
 N_SPLITS = 5
