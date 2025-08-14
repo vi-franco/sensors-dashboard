@@ -118,29 +118,42 @@ print(f"Righe Training: {len(data_for_training)} · Righe Test: {len(test_df)}")
 print("✅ [SEZIONE 3] OK.")
 
 # ==============================================================================
-# SEZIONE 4 — ADDDESTRAMENTO MODELLO DI REGRESSIONE
+# SEZIONE 4 — ADDESTRAMENTO MODELLO DI REGRESSIONE (Delta)
 # ==============================================================================
 print("\n--- [SEZIONE 4] Inizio Addestramento Modello di Regressione ---")
+
 if data_for_training.empty:
     raise ValueError("DataFrame 'data_for_training' vuoto. Impossibile addestrare.")
 
-# Ordine temporale per split train/val causale
+# --- 4.1) Ordine temporale per split causale ---
 df_train_sorted = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
-
 X_df = df_train_sorted[features_for_model].copy()
-y_df = df_train_sorted[targets].copy()
+y_df = df_train_sorted[targets].copy()  # delta già calcolati in SEZIONE 2
 
-# Sanitize: Inf -> NaN, drop righe con NaN in X o y
+# --- 4.2) Pulizia NaN/Inf ---
 X_df.replace([np.inf, -np.inf], np.nan, inplace=True)
 y_df.replace([np.inf, -np.inf], np.nan, inplace=True)
 mask_ok = (~X_df.isna().any(axis=1)) & (~y_df.isna().any(axis=1))
-dropped = int(len(X_df) - mask_ok.sum())
+dropped = len(X_df) - int(mask_ok.sum())
 if dropped > 0:
     print(f"🧹 Rimosse {dropped} righe non valide (NaN/Inf in feature o target) prima dello split.")
 X_df = X_df.loc[mask_ok]
 y_df = y_df.loc[mask_ok]
 
-# Split temporale 80/20
+# --- 4.3) (Opzionale) Clipping delta estremi per stabilità ---
+clip_map = {
+    "temperature_sensor": (-5, 5),
+    "absolute_humidity_sensor": (-10, 10),
+    "co2": (-1000, 1000),
+    "voc": (-2000, 2000)
+}
+for col, (low, high) in clip_map.items():
+    for h in horizons:
+        t_col = f"{col}_pred_{h}m"
+        if t_col in y_df.columns:
+            y_df[t_col] = y_df[t_col].clip(low, high)
+
+# --- 4.4) Split temporale train/val ---
 val_split_percentage = 0.2
 split_point_tv = int(len(X_df) * (1 - val_split_percentage))
 X_train, X_val = X_df.iloc[:split_point_tv], X_df.iloc[split_point_tv:]
@@ -148,80 +161,81 @@ y_train, y_val = y_df.iloc[:split_point_tv], y_df.iloc[split_point_tv:]
 
 print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione.")
 
-# Scaling solo su TRAIN
+# --- 4.5) Scaling feature e target ---
+from sklearn.preprocessing import StandardScaler
+
+# Feature scaler
 x_scaler = StandardScaler().fit(X_train)
-y_scaler = StandardScaler().fit(y_train)
-
-y_scale_tf = tf.constant(y_scaler.scale_.astype("float32"))
-y_mean_tf  = tf.constant(y_scaler.mean_.astype("float32"))
-
-def mae_real_units(y_true_s, y_pred_s):
-    # y_*_s sono standardizzati -> riportiamo in unità reali dei delta
-    y_true = y_true_s * y_scale_tf + y_mean_tf
-    y_pred = y_pred_s * y_scale_tf + y_mean_tf
-    return tf.reduce_mean(tf.abs(y_true - y_pred))
-
 X_train_s = x_scaler.transform(X_train).astype("float32")
 X_val_s   = x_scaler.transform(X_val).astype("float32")
-y_train_s = y_scaler.transform(y_train).astype("float32")
-y_val_s   = y_scaler.transform(y_val).astype("float32")
 
-# Verifica finiti
+# Target scaler separato per ogni colonna
+from collections import OrderedDict
+y_scalers = OrderedDict()
+y_train_s_parts, y_val_s_parts = [], []
+
+for col in y_train.columns:
+    scaler = StandardScaler().fit(y_train[[col]])
+    y_scalers[col] = scaler
+    y_train_s_parts.append(scaler.transform(y_train[[col]]))
+    y_val_s_parts.append(scaler.transform(y_val[[col]]))
+
+y_train_s = np.hstack(y_train_s_parts).astype("float32")
+y_val_s   = np.hstack(y_val_s_parts).astype("float32")
+
+# --- 4.6) Check valori finiti ---
 def _check_finite(name, arr):
     if not np.all(np.isfinite(arr)):
-        bad = int((~np.isfinite(arr)).sum())
-        raise ValueError(f"{name} contiene {bad} valori non finiti. Controlla pipeline/feature.")
+        bad = np.logical_not(np.isfinite(arr)).sum()
+        raise ValueError(f"{name} contiene {bad} valori non finiti.")
+
 _check_finite("X_train_s", X_train_s)
 _check_finite("y_train_s", y_train_s)
 _check_finite("X_val_s",   X_val_s)
 _check_finite("y_val_s",   y_val_s)
 
+# --- 4.7) Creazione modello ---
 def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0.1, lr=3e-4):
+    from tensorflow.keras import layers, Model, optimizers, losses
     inp = layers.Input(shape=(input_dim,))
     x = inp
     for _ in range(depth):
         x = layers.Dense(width, activation="relu")(x)
-        if dropout:
-            x = layers.Dropout(dropout)(x)
+        x = layers.Dropout(dropout)(x)
     out = layers.Dense(output_dim, activation="linear")(x)
-    model = models.Model(inputs=inp, outputs=out)
+    model = Model(inp, out)
+    model.compile(
+        optimizer=optimizers.Adam(learning_rate=lr),
+        loss=losses.Huber(delta=1.0),
+        metrics=["mae"]
+    )
     return model
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4, clipnorm=1.0)
 model = create_regression_model(
     input_dim=X_train_s.shape[1],
-    output_dim=y_train_s.shape[1]
+    output_dim=y_train_s.shape[1],
+    width=128,
+    depth=3,
+    dropout=0.1,
+    lr=3e-4
 )
 
-model.compile(
-    optimizer=optimizer,
-    loss=tf.keras.losses.Huber(delta=1.0),
-    metrics=["mae", mae_real_units],  # <- espone 'mae_real_units' e 'val_mae_real_units'
-)
-
-early_stop = tf.keras.callbacks.EarlyStopping(
-    monitor="val_mae_real_units",
-    mode="min",                # <- necessario
-    patience=8,
-    restore_best_weights=True,
-)
-
-reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-    monitor="val_mae_real_units",
-    mode="min",                # <- consigliato
-    factor=0.5,
-    patience=3,
-    min_lr=1e-5,
-)
+# --- 4.8) Training ---
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
     epochs=100,
     batch_size=2048,
-    callbacks=[early_stop, reduce_lr],
-    verbose=1,
+    callbacks=[
+        EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, mode="min"),
+        ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, mode="min")
+    ],
+    verbose=1
 )
+
+print(f"✅ Modello e artefatti salvati in: {ACTION_REGRESSOR_DIR}")
 
 # --- Salvataggio modello e artefatti ---
 try:
@@ -269,199 +283,76 @@ except Exception as e:
     print(f"⚠️ Impossibile salvare le figure di training: {e}")
 
 # ==============================================================================
-# SEZIONE 5 — ANALISI DETTAGLIATA E VALUTAZIONE (robusta ai NaN/Inf)
+# SEZIONE 5 — ANALISI DETTAGLIATA E VALUTAZIONE
 # ==============================================================================
 print("\n--- [SEZIONE 5] Inizio Analisi Dettagliata e Valutazione ---")
 
-if test_df.empty:
-    print("⚠️ Test set non disponibile, salto la valutazione dettagliata.")
-else:
-    # 1) Utility
-    def safe_mae(y_true, y_pred):
-        m = np.isfinite(y_true) & np.isfinite(y_pred)
-        if not np.any(m):
-            return np.nan, 0
-        return float(np.mean(np.abs(y_true[m] - y_pred[m]))), int(m.sum())
+# --- 5.1) Predizioni sul test set ---
+X_test_df = test_df[features_for_model].copy()
+y_test_df = test_df[targets].copy()
 
-    def sanitize_inplace(df, cols):
-        for c in cols:
-            if c in df.columns:
-                s = pd.to_numeric(df[c], errors="coerce")
-                s = s.replace([np.inf, -np.inf], np.nan)
-                df[c] = s
+# Pulizia test: tolgo righe non valide
+X_test_df = X_test_df.replace([np.inf, -np.inf], np.nan)
+y_test_df = y_test_df.replace([np.inf, -np.inf], np.nan)
+mask_ok = (~X_test_df.isna().any(axis=1)) & (~y_test_df.isna().any(axis=1))
+X_test_df = X_test_df.loc[mask_ok]
+y_test_df = y_test_df.loc[mask_ok]
 
-    # 2) Predizioni sul test (delta -> assolute) + sanificazione
-    X_test_df = test_df[features_for_model]
-    X_test_scaled = x_scaler.transform(X_test_df)
-    y_pred_scaled = model.predict(X_test_scaled, verbose=1)
-    y_pred_delta = y_scaler.inverse_transform(y_pred_scaled)
+# Scaling
+X_test_s = x_scaler.transform(X_test_df).astype("float32")
 
-    # Avviso se inverse_transform produce non finiti
-    if not np.all(np.isfinite(y_pred_delta)):
-        bad = np.logical_not(np.isfinite(y_pred_delta)).sum()
-        print(f"⚠️ Predizioni non finite dopo inverse_transform: {bad} valori")
+# Predizione delta standardizzati
+y_pred_s = model.predict(X_test_s, batch_size=1024, verbose=0)
 
-    results_df = test_df[["device", "utc_datetime"]].copy()
-    pred_cols = []
-    for i, name in enumerate(targets):
-        base_col = name.split("_pred_")[0]
-        out_col = f"pred_absolute_{name}"
-        if base_col in test_df.columns:
-            pred = test_df[base_col].to_numpy(dtype=float) + y_pred_delta[:, i]
-        else:
-            pred = np.full((len(test_df),), np.nan, dtype=float)
-        results_df[out_col] = pred
-        pred_cols.append(out_col)
+# Inverse transform -> delta in unità reali
+y_pred_delta = y_scaler.inverse_transform(y_pred_s)
+y_true_delta = y_scaler.inverse_transform(y_test_df)
 
-    # Sanifica predizioni
-    sanitize_inplace(results_df, pred_cols)
+# --- 5.2) Conversione in valori assoluti ---
+columns_to_predict = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
+horizons = [15, 30, 60]
 
-    # Sanifica colonne eval nel test
-    PREDICTION_HORIZONS = [15, 30, 60]
-    SENSOR_TARGETS = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
-    eval_cols = []
-    for h in PREDICTION_HORIZONS:
-        for v in SENSOR_TARGETS:
-            col = f"{v}_eval_{h}m"
-            if col in test_df.columns:
-                eval_cols.append(col)
-    sanitize_inplace(test_df, eval_cols)
+y_pred_abs = {}
+y_true_abs = {}
 
-    # 3) Metriche per variabile/orizzonte
-    mae_rows = []
-    for h in PREDICTION_HORIZONS:
-        print(f"\nOrizzonte @ {h} min:")
-        for var in SENSOR_TARGETS:
-            eval_col = f"{var}_eval_{h}m"
-            pred_col = f"pred_absolute_{var}_pred_{h}m"
-            if eval_col not in test_df.columns or pred_col not in results_df.columns:
-                print(f"  - {var:<12}: N/A (colonne mancanti)")
-                continue
+for i, (col, h) in enumerate([(c, t) for c in columns_to_predict for t in horizons]):
+    current_vals = test_df.loc[mask_ok, col].values  # valore attuale
+    y_pred_abs[f"{col}_pred_{h}m"] = current_vals + y_pred_delta[:, i]
+    y_true_abs[f"{col}_eval_{h}m"] = current_vals + y_true_delta[:, i]
 
-            true_abs = test_df[eval_col].to_numpy(dtype=float)
-            pred_abs = results_df[pred_col].to_numpy(dtype=float)
+# --- 5.3) Calcolo metriche ---
+from sklearn.metrics import mean_absolute_error
+import numpy as np
 
-            mae, n_valid = safe_mae(true_abs, pred_abs)
-            unit_map = {
-                "temperature_sensor": "°C",
-                "absolute_humidity_sensor": "g/m³",
-                "co2": "ppm",
-                "voc": "index",
-            }
-            unit = unit_map.get(var, "")
-            var_name = var.replace("_sensor", "").replace("absolute_humidity", "umid_abs")
+for h in horizons:
+    print(f"\nOrizzonte @ {h} min:")
+    for col in columns_to_predict:
+        true_vals = y_true_abs[f"{col}_eval_{h}m"]
+        pred_vals = y_pred_abs[f"{col}_pred_{h}m"]
 
-            if np.isnan(mae):
-                print(f"  - {var_name:<12}: MAE = N/A (0 campioni validi)")
-            else:
-                # Percentili solo sui validi
-                m = np.isfinite(true_abs) & np.isfinite(pred_abs)
-                abs_error = np.abs(true_abs[m] - pred_abs[m])
-                p50 = float(np.percentile(abs_error, 50))
-                p90 = float(np.percentile(abs_error, 90))
-                p95 = float(np.percentile(abs_error, 95))
-                print(f"  - {var_name:<12}: MAE = {mae:.3f} {unit}  (validi={n_valid})")
-                print(f"    └─ Percentili (P50/P90/P95): {p50:.3f} / {p90:.3f} / {p95:.3f} {unit}")
-                mae_rows.append({"h_min": h, "var": var_name, "mae": mae})
+        # Check finite
+        mask_finite = np.isfinite(true_vals) & np.isfinite(pred_vals)
+        valid_count = mask_finite.sum()
 
-    # 4) Figure MAE
-    if mae_rows:
-        mae_df_plot = pd.DataFrame(mae_rows)
-        for h in sorted(mae_df_plot["h_min"].unique()):
-            sub = mae_df_plot[mae_df_plot["h_min"] == h].dropna(subset=["mae"])
-            if sub.empty:
-                continue
-            plt.figure()
-            plt.bar(sub["var"], sub["mae"])
-            plt.title(f"MAE per variabile @ {h} min")
-            plt.xlabel("Variabile")
-            plt.ylabel("MAE")
-            plt.tight_layout()
-            outp = SAVE_DIR / f"mae_{h}m.png"
-            plt.savefig(outp, dpi=150)
-            plt.close()
-        print("📊 Figure MAE salvate nella cartella output.")
+        if valid_count == 0:
+            print(f"  - {col:<12}: MAE = N/A (nessun valore valido)")
+            continue
 
-    # 5) Analisi per stato attuatori (@15m) — robusta ai NaN
-    print("\n--- Analisi MAE per Stato Attuatore (@15m) ---")
-    STATE_COLS = [c for c in test_df.columns if c.startswith("state_")]
-    if STATE_COLS:
-        ALL_ACTUATORS = [c.replace("state_", "") for c in STATE_COLS]
-        scenarios = {"Tutto Spento": (test_df[STATE_COLS].sum(axis=1) == 0)}
-        for act in ALL_ACTUATORS:
-            col = f"state_{act}"
-            if col in test_df.columns:
-                scenarios[f"{act} Acceso"] = test_df[col] == 1
+        mae_val = mean_absolute_error(true_vals[mask_finite], pred_vals[mask_finite])
+        p50 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 50)
+        p90 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 90)
+        p95 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 95)
 
-        header = f"{'Scenario':<20} | {'MAE Temp':<10} | {'MAE Umid Abs':<12} | {'MAE CO₂':<10} | {'MAE VOC':<10}"
-        print(header)
-        print("-" * len(header))
+        unit_map = {
+            "temperature_sensor": "°C",
+            "absolute_humidity_sensor": "g/m³",
+            "co2": "ppm",
+            "voc": "index"
+        }
 
-        for name, mask in scenarios.items():
-            idx = mask[mask].index
-            if len(idx) <= 5:
-                print(f"{name:<20} | {'N/A (campioni < 5)':-^53}")
-                continue
+        print(f"  - {col:<12}: MAE = {mae_val:.3f} {unit_map[col]}  (validi={valid_count})")
+        print(f"    └─ Percentili (P50/P90/P95): {p50:.3f} / {p90:.3f} / {p95:.3f} {unit_map[col]}")
 
-            row = []
-            for v in SENSOR_TARGETS:
-                true_col = f"{v}_eval_15m"
-                pred_col = f"pred_absolute_{v}_pred_15m"
-                if true_col not in test_df.columns or pred_col not in results_df.columns:
-                    row.append(np.nan); continue
-                y_t = test_df.loc[idx, true_col].to_numpy(dtype=float)
-                y_p = results_df.loc[idx, pred_col].to_numpy(dtype=float)
-                m = np.isfinite(y_t) & np.isfinite(y_p)
-                if np.any(m):
-                    row.append(float(np.mean(np.abs(y_t[m] - y_p[m]))))
-                else:
-                    row.append(np.nan)
-
-            fmt = lambda x, w: (f"{x:<{w}.2f}" if np.isfinite(x) else f"{'N/A':<{w}}")
-            print(
-                f"{name:<20} | "
-                f"{fmt(row[0],10)} | {fmt(row[1],12)} | {fmt(row[2],10)} | {fmt(row[3],10)}"
-            )
-    else:
-        print("ℹ️ Nessuna colonna di stato attuatori (state_*) trovata: salto l’analisi per scenari.")
-
-    # 6) Casi estremi (95° percentile) — solo su coppie finite
-    print("\nSalvataggio casi estremi per analisi…")
-    extreme_cases_all = []
-    for h in PREDICTION_HORIZONS:
-        for var in SENSOR_TARGETS:
-            eval_col = f"{var}_eval_{h}m"
-            pred_col = f"pred_absolute_{var}_pred_{h}m"
-            if eval_col not in test_df.columns or pred_col not in results_df.columns:
-                continue
-            y_t = test_df[eval_col].to_numpy(dtype=float)
-            y_p = results_df[pred_col].to_numpy(dtype=float)
-            m = np.isfinite(y_t) & np.isfinite(y_p)
-            if not np.any(m):
-                continue
-            abs_err = np.abs(y_t[m] - y_p[m])
-            thr = np.percentile(abs_err, 95)
-            # Reindicizza sugli indici originali validi
-            valid_idx = test_df.index[m]
-            extreme_idx = valid_idx[np.where(abs_err >= thr)[0]]
-            if len(extreme_idx) == 0:
-                continue
-            df_ext = results_df.loc[extreme_idx].copy()
-            df_ext["var"] = var
-            df_ext["horizon_min"] = h
-            df_ext["y_true"] = test_df.loc[extreme_idx, eval_col].to_numpy(dtype=float)
-            df_ext["y_pred"] = results_df.loc[extreme_idx, pred_col].to_numpy(dtype=float)
-            df_ext["abs_error"] = np.abs(df_ext["y_true"] - df_ext["y_pred"])
-            extreme_cases_all.append(df_ext)
-
-    if extreme_cases_all:
-        df_extreme_all = pd.concat(extreme_cases_all, ignore_index=True)
-        out_path = DEBUG_DATA_PATH / "casi_estremi.csv"
-        df_extreme_all.to_csv(out_path, index=False)
-        print(f"✅ Salvati {len(df_extreme_all)} casi estremi in {out_path}")
-    else:
-        print("ℹ️ Nessun caso estremo trovato.")
-
-    print("\n✅ [SEZIONE 5] Analisi dettagliata e completa terminata.")
+print("✅ [SEZIONE 5] Analisi dettagliata completata.")
 
 print("\n🏁 Fine script.")
