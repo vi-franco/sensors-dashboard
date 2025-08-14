@@ -156,7 +156,7 @@ y_scale_tf = tf.constant(y_scaler.scale_.astype("float32"))
 y_mean_tf  = tf.constant(y_scaler.mean_.astype("float32"))
 
 def mae_real_units(y_true_s, y_pred_s):
-    # y_true_s / y_pred_s sono in spazio standardizzato
+    # y_*_s sono standardizzati -> riportiamo in unità reali dei delta
     y_true = y_true_s * y_scale_tf + y_mean_tf
     y_pred = y_pred_s * y_scale_tf + y_mean_tf
     return tf.reduce_mean(tf.abs(y_true - y_pred))
@@ -188,19 +188,39 @@ def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0
     return model
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4, clipnorm=1.0)
-model = create_regression_model(input_dim=X_train_s.shape[1], output_dim=y_train_s.shape[1])
-model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", mae_real_units])
+model = create_regression_model(
+    input_dim=X_train_s.shape[1],
+    output_dim=y_train_s.shape[1]
+)
+
+model.compile(
+    optimizer=optimizer,
+    loss=tf.keras.losses.Huber(delta=1.0),
+    metrics=["mae", mae_real_units],  # <- espone 'mae_real_units' e 'val_mae_real_units'
+)
+
+early_stop = tf.keras.callbacks.EarlyStopping(
+    monitor="val_mae_real_units",
+    mode="min",                # <- necessario
+    patience=8,
+    restore_best_weights=True,
+)
+
+reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+    monitor="val_mae_real_units",
+    mode="min",                # <- consigliato
+    factor=0.5,
+    patience=3,
+    min_lr=1e-5,
+)
 
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
     epochs=100,
     batch_size=2048,
-    callbacks=[
-        tf.keras.callbacks.EarlyStopping(monitor="val_mae_real_units", patience=8, restore_best_weights=True),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_mae_real_units", factor=0.5, patience=3, min_lr=1e-5),
-    ],
-    verbose=1
+    callbacks=[early_stop, reduce_lr],
+    verbose=1,
 )
 
 # --- Salvataggio modello e artefatti ---
