@@ -153,11 +153,23 @@ for col, (low, high) in clip_map.items():
         if t_col in y_df.columns:
             y_df[t_col] = y_df[t_col].clip(low, high)
 
-# --- 4.4) Split temporale train/val ---
 val_split_percentage = 0.2
-split_point_tv = int(len(X_df) * (1 - val_split_percentage))
-X_train, X_val = X_df.iloc[:split_point_tv], X_df.iloc[split_point_tv:]
-y_train, y_val = y_df.iloc[:split_point_tv], y_df.iloc[split_point_tv:]
+
+period_ids = data_for_training["period_id"].unique()
+rng = np.random.RandomState(42)
+rng.shuffle(period_ids)
+
+n_val = int(len(period_ids) * val_split_percentage)
+val_periods = set(period_ids[:n_val])
+train_periods = set(period_ids[n_val:])
+
+train_mask = data_for_training["period_id"].isin(train_periods)
+val_mask = data_for_training["period_id"].isin(val_periods)
+
+X_train = data_for_training.loc[train_mask, features_for_model]
+y_train = data_for_training.loc[train_mask, targets]
+X_val   = data_for_training.loc[val_mask, features_for_model]
+y_val   = data_for_training.loc[val_mask, targets]
 
 print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione.")
 
@@ -235,8 +247,6 @@ history = model.fit(
     verbose=1
 )
 
-print(f"✅ Modello e artefatti salvati in: {ACTION_REGRESSOR_DIR}")
-
 # --- Salvataggio modello e artefatti ---
 try:
     model.save(str(SAVED_MODEL_PATH / "prediction_model.keras"))
@@ -249,6 +259,8 @@ try:
     print(f"✅ Modello e artefatti salvati in: {SAVED_MODEL_PATH}")
 except Exception as e:
     print(f"❌ Errore durante il salvataggio dei file: {e}")
+
+print(f"✅ Modello e artefatti salvati in: {SAVED_MODEL_PATH}")
 
 print("✅ [SEZIONE 4] Addestramento completato.")
 
