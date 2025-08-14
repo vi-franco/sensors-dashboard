@@ -11,6 +11,7 @@ from influxdb import InfluxDBClient
 from datetime import datetime, timezone, timedelta
 import config
 import pandas as pd
+from typing import Any
 
 # ==============================================================================
 # --- DATA FETCHING FUNCTIONS ---
@@ -64,7 +65,7 @@ def get_external_weather_df(lat: float, lon: float) -> pd.DataFrame:
 
     return df_final[[col for col in final_columns if col in df_final.columns]]
 
-def get_sensor_history(device_id: str, status: Dict[str, Any]) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
+def get_sensor_history(device_id: str, status: dict[str, Any]) -> Tuple[Optional[pd.DataFrame], dict[str, Any]]:
     try:
         client = InfluxDBClient(
             host=config.INFLUXDB_HOST,
