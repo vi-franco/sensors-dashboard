@@ -118,106 +118,75 @@ print(f"Righe Training: {len(data_for_training)} · Righe Test: {len(test_df)}")
 print("✅ [SEZIONE 3] OK.")
 
 # ==============================================================================
-# SEZIONE 4 — ADDESTRAMENTO MODELLO DI REGRESSIONE (Delta)
+# SEZIONE 4 — ADDESTRAMENTO MODELLO DI REGRESSIONE (Pulita)
 # ==============================================================================
 print("\n--- [SEZIONE 4] Inizio Addestramento Modello di Regressione ---")
 
 if data_for_training.empty:
     raise ValueError("DataFrame 'data_for_training' vuoto. Impossibile addestrare.")
 
-# --- 4.1) Ordine temporale per split causale ---
+# 4.1) Ordino temporalmente per split causale
 df_train_sorted = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
 X_df = df_train_sorted[features_for_model].copy()
-y_df = df_train_sorted[targets].copy()  # delta già calcolati in SEZIONE 2
+y_df = df_train_sorted[targets].copy()   # <-- delta già creati in SEZIONE 2
 
-# --- 4.2) Pulizia NaN/Inf ---
-X_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-y_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-mask_ok = (~X_df.isna().any(axis=1)) & (~y_df.isna().any(axis=1))
-dropped = len(X_df) - int(mask_ok.sum())
-if dropped > 0:
-    print(f"🧹 Rimosse {dropped} righe non valide (NaN/Inf in feature o target) prima dello split.")
-X_df = X_df.loc[mask_ok]
-y_df = y_df.loc[mask_ok]
+# 4.2) Split temporale train/val (80/20)
+val_split_percentage = 0.20
+split_point_tv = int(len(X_df) * (1 - val_split_percentage))
 
-# --- 4.3) (Opzionale) Clipping delta estremi per stabilità ---
-clip_map = {
-    "temperature_sensor": (-5, 5),
-    "absolute_humidity_sensor": (-10, 10),
-    "co2": (-1000, 1000),
-    "voc": (-2000, 2000)
-}
-for col, (low, high) in clip_map.items():
-    for h in horizons:
-        t_col = f"{col}_pred_{h}m"
-        if t_col in y_df.columns:
-            y_df[t_col] = y_df[t_col].clip(low, high)
-
-val_split_percentage = 0.2
-
-period_ids = data_for_training["period_id"].unique()
-rng = np.random.RandomState(42)
-rng.shuffle(period_ids)
-
-n_val = int(len(period_ids) * val_split_percentage)
-val_periods = set(period_ids[:n_val])
-train_periods = set(period_ids[n_val:])
-
-train_mask = data_for_training["period_id"].isin(train_periods)
-val_mask = data_for_training["period_id"].isin(val_periods)
-
-X_train = data_for_training.loc[train_mask, features_for_model]
-y_train = data_for_training.loc[train_mask, targets]
-X_val   = data_for_training.loc[val_mask, features_for_model]
-y_val   = data_for_training.loc[val_mask, targets]
+X_train = X_df.iloc[:split_point_tv].copy()
+y_train = y_df.iloc[:split_point_tv].copy()
+X_val   = X_df.iloc[split_point_tv:].copy()
+y_val   = y_df.iloc[split_point_tv:].copy()
 
 print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione.")
 
-# --- 4.5) Scaling feature e target ---
-from sklearn.preprocessing import StandardScaler
+# 4.3) Pulizia NaN/Inf su ciascun set (mantiene allineamento X/Y)
+def _clean_pair(X, Y):
+    X = X.replace([np.inf, -np.inf], np.nan)
+    Y = Y.replace([np.inf, -np.inf], np.nan)
+    mask = (~X.isna().any(axis=1)) & (~Y.isna().any(axis=1))
+    dropped = int(len(X) - mask.sum())
+    return X.loc[mask], Y.loc[mask], dropped
 
-# Feature scaler
+X_train, y_train, drop_tr = _clean_pair(X_train, y_train)
+X_val,   y_val,   drop_v  = _clean_pair(X_val,   y_val)
+if drop_tr or drop_v:
+    print(f"🧹 Rimosse {drop_tr} righe train e {drop_v} righe val non valide (NaN/Inf).")
+
+# 4.4) Scaling (fit solo su TRAIN)
 x_scaler = StandardScaler().fit(X_train)
+y_scaler = StandardScaler().fit(y_train)
+
 X_train_s = x_scaler.transform(X_train).astype("float32")
 X_val_s   = x_scaler.transform(X_val).astype("float32")
+y_train_s = y_scaler.transform(y_train).astype("float32")
+y_val_s   = y_scaler.transform(y_val).astype("float32")
 
-# Target scaler separato per ogni colonna
-from collections import OrderedDict
-y_scalers = OrderedDict()
-y_train_s_parts, y_val_s_parts = [], []
-
-for col in y_train.columns:
-    scaler = StandardScaler().fit(y_train[[col]])
-    y_scalers[col] = scaler
-    y_train_s_parts.append(scaler.transform(y_train[[col]]))
-    y_val_s_parts.append(scaler.transform(y_val[[col]]))
-
-y_train_s = np.hstack(y_train_s_parts).astype("float32")
-y_val_s   = np.hstack(y_val_s_parts).astype("float32")
-
-# --- 4.6) Check valori finiti ---
+# 4.5) Check che tutto sia finito
 def _check_finite(name, arr):
     if not np.all(np.isfinite(arr)):
-        bad = np.logical_not(np.isfinite(arr)).sum()
+        bad = int((~np.isfinite(arr)).sum())
         raise ValueError(f"{name} contiene {bad} valori non finiti.")
-
 _check_finite("X_train_s", X_train_s)
 _check_finite("y_train_s", y_train_s)
 _check_finite("X_val_s",   X_val_s)
 _check_finite("y_val_s",   y_val_s)
 
-# --- 4.7) Creazione modello ---
+# 4.6) Modello
+from tensorflow.keras import layers, models, optimizers, losses, callbacks
+
 def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0.1, lr=3e-4):
-    from tensorflow.keras import layers, Model, optimizers, losses
     inp = layers.Input(shape=(input_dim,))
     x = inp
     for _ in range(depth):
         x = layers.Dense(width, activation="relu")(x)
-        x = layers.Dropout(dropout)(x)
+        if dropout:
+            x = layers.Dropout(dropout)(x)
     out = layers.Dense(output_dim, activation="linear")(x)
-    model = Model(inp, out)
+    model = models.Model(inputs=inp, outputs=out)
     model.compile(
-        optimizer=optimizers.Adam(learning_rate=lr),
+        optimizer=optimizers.Adam(learning_rate=lr, clipnorm=1.0),
         loss=losses.Huber(delta=1.0),
         metrics=["mae"]
     )
@@ -225,30 +194,25 @@ def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0
 
 model = create_regression_model(
     input_dim=X_train_s.shape[1],
-    output_dim=y_train_s.shape[1],
-    width=128,
-    depth=3,
-    dropout=0.1,
-    lr=3e-4
+    output_dim=y_train_s.shape[1]
 )
 
-# --- 4.8) Training ---
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+# 4.7) Training
+cb_early = callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10, restore_best_weights=True)
+cb_rlr   = callbacks.ReduceLROnPlateau(monitor="val_loss", mode="min", factor=0.5, patience=5, min_lr=1e-6)
 
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
     epochs=100,
     batch_size=2048,
-    callbacks=[
-        EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, mode="min"),
-        ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, mode="min")
-    ],
+    callbacks=[cb_early, cb_rlr],
     verbose=1
 )
 
-# --- Salvataggio modello e artefatti ---
+# 4.8) Salvataggio artefatti
 try:
+    SAVED_MODEL_PATH.mkdir(parents=True, exist_ok=True)
     model.save(str(SAVED_MODEL_PATH / "prediction_model.keras"))
     joblib.dump(x_scaler, str(SAVED_MODEL_PATH / "prediction_x_scaler.joblib"))
     joblib.dump(y_scaler, str(SAVED_MODEL_PATH / "prediction_y_scaler.joblib"))
@@ -258,11 +222,10 @@ try:
         json.dump(targets, f, ensure_ascii=False, indent=2)
     print(f"✅ Modello e artefatti salvati in: {SAVED_MODEL_PATH}")
 except Exception as e:
-    print(f"❌ Errore durante il salvataggio dei file: {e}")
-
-print(f"✅ Modello e artefatti salvati in: {SAVED_MODEL_PATH}")
+    print(f"❌ Errore durante il salvataggio degli artefatti: {e}")
 
 print("✅ [SEZIONE 4] Addestramento completato.")
+
 
 # --- Salvo figure training (loss/MAE) ---
 try:
