@@ -51,9 +51,10 @@ if __name__ == "__main__":
             continue
 
         merged_df = history_df.join(weather_history_df, how='left')
-        if not weather_history_df.empty:
-            weather_cols = weather_history_df.columns.difference(history_df.columns)
-            merged_df[weather_cols] = merged_df[weather_cols].ffill()
+        merged_df.reset_index(inplace=True)
+
+        weather_cols = weather_history_df.columns.difference(history_df.columns)
+        merged_df[weather_cols] = merged_df[weather_cols].ffill()
 
         states, probs, class_status = run_classification_inference(merged_df)
         if states is None:
