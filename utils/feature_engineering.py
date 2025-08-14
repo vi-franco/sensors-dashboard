@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from utils.functions import vpd_kpa
 
-def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
+def add_features_baseline_prediction(df: pd.DataFrame) -> pd.DataFrame:
     return add_features_actuator_classification(df)
 
 
@@ -36,7 +36,7 @@ def add_targets_baseline_prediction(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def ensure_min_columns_actuator_classification(df: pd.DataFrame):
+def ensure_min_columns_baseline_prediction(df: pd.DataFrame):
     return ensure_min_columns_actuator_classification(df)
 
 def ensure_min_columns_actuator_classification(df: pd.DataFrame):
