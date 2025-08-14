@@ -80,7 +80,7 @@ def get_weather_for_device(lat, lng):
     if cache_key in OWM_CACHE and (time.time() - OWM_CACHE[cache_key]['timestamp']) < OWM_CACHE_SECONDS:
         return OWM_CACHE[cache_key]['data']
     
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lng={lng}&appid={OWM_API_KEY}&units=metric"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lng}&appid={OWM_API_KEY}&units=metric"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
