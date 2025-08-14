@@ -13,7 +13,7 @@ def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
 def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     required_columns = [
         "device",
-        "group_by"
+        "period_id",
         "utc_datetime",
         "local_datetime",
         "lat",
