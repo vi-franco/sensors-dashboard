@@ -32,19 +32,17 @@ def initialize_database():
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.cursor()
 
-        # --- DROPS (come nel tuo originale: pulizia completa) ---
         print("Dropping old tables if they exist...")
         cur.execute("DROP TABLE IF EXISTS history")
+        cur.execute("DROP TABLE IF EXISTS external_weather")
         cur.execute("DROP TABLE IF EXISTS predictions")
         cur.execute("DROP TABLE IF EXISTS suggestions")
         cur.execute("DROP TABLE IF EXISTS latest_status")
         cur.execute("DROP TABLE IF EXISTS device_actuators")
         cur.execute("DROP TABLE IF EXISTS devices")
-        # Nuove tabelle aggiunte da noi:
         cur.execute("DROP TABLE IF EXISTS hysteresis_global")
         cur.execute("DROP TABLE IF EXISTS predictions_meta")
 
-        # 1) DEVICES
         print("Creating 'devices' table...")
         cur.execute("""
             CREATE TABLE devices (
@@ -56,7 +54,6 @@ def initialize_database():
             )
         """)
 
-        # 2) DEVICE_ACTUATORS (quali attuatori sono abilitati/visibili per device)
         print("Creating 'device_actuators' table...")
         cur.execute("""
             CREATE TABLE device_actuators (
@@ -68,7 +65,27 @@ def initialize_database():
             )
         """)
 
-        # 3) LATEST_STATUS (ultimo stato sensori + stati attuatori)
+        print("Creating 'external_weather' table...")
+        cur.execute("""
+            CREATE TABLE external_weather (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dt INTEGER NOT NULL,
+                lat REAL NOT NULL,
+                lng REAL NOT NULL,
+                temperature REAL,
+                humidity REAL,
+                pressure REAL,
+                wind_speed REAL,
+                clouds_percentage INTEGER,
+                rain_1h REAL,
+                sunrise_time INTEGER,
+                sunset_time INTEGER,
+                timezone_offset INTEGER,
+                weather_main TEXT,
+                UNIQUE(dt, lat, lng)
+            );
+        """)
+
         print("Creating 'latest_status' table...")
         status_cols = [
             "device_id TEXT PRIMARY KEY",
@@ -83,20 +100,16 @@ def initialize_database():
             "status_level INTEGER",
             "status_message TEXT"
         ]
-        # Stati attuatori EN come nel tuo originale
         status_cols.extend([f"state_{act} INTEGER" for act in ALL_ACTUATORS])
-        # NOVITÀ: probabilità attuatori (una colonna per ciascun attuatore EN)
         status_cols.extend([f"prob_{act} REAL" for act in ALL_ACTUATORS])
-
         cur.execute(f"CREATE TABLE latest_status ({', '.join(status_cols)})")
 
-        # 4) SUGGESTIONS (come nel tuo originale: combinazioni suggerite di stati)
         print("Creating 'suggestions' table...")
         sugg_cols = ["suggestion_id INTEGER PRIMARY KEY AUTOINCREMENT", "device_id TEXT"]
         sugg_cols.extend([f"state_{act} INTEGER" for act in ALL_ACTUATORS])
         cur.execute(f"CREATE TABLE suggestions ({', '.join(sugg_cols)})")
 
-        # 5) PREDICTIONS (come nel tuo originale)
+
         print("Creating 'predictions' table...")
         cur.execute("""
             CREATE TABLE predictions (
@@ -114,7 +127,7 @@ def initialize_database():
             )
         """)
 
-        # 6) HISTORY (come nel tuo originale)
+
         print("Creating 'history' table...")
         cur.execute("""
             CREATE TABLE history (
@@ -131,7 +144,7 @@ def initialize_database():
             )
         """)
 
-        # 7) NOVITÀ: HYSTERESIS GLOBALE per attuatore EN
+
         print("Creating 'hysteresis_global' table...")
         cur.execute("""
             CREATE TABLE hysteresis_global (
@@ -142,7 +155,7 @@ def initialize_database():
             )
         """)
 
-        # Seed di default (soglie ragionevoli). Modificale se vuoi.
+
         print("Seeding default hysteresis thresholds...")
         default_hys = {
             'Finestra':       {'on': 0.70, 'off': 0.30},
@@ -157,7 +170,8 @@ def initialize_database():
                 VALUES (?, ?, ?, ?)
             """, (act, th['on'], th['off'], datetime.utcnow().isoformat()))
 
-        # 8) NOVITÀ: PREDICTIONS META (timestamp "predicted at" per device)
+
+
         print("Creating 'predictions_meta' table...")
         cur.execute("""
             CREATE TABLE predictions_meta (

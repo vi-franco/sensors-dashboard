@@ -1,0 +1,10 @@
+backend/database.db
+*.db
+*.sqlite3
+
+backend/owm_cache/
+backend/weather_history/
+
+# Questa singola regola ignora TUTTE le cartelle __pycache__ nel progetto.
+__pycache__/
+*.pyc

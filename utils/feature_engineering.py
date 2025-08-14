@@ -5,7 +5,7 @@ from utils.functions import vpd_kpa
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
-    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"], win_short=5, win_long=30, extra_windows=(60, 180))
+    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"])
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
     df = add_device_baselines(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"])
     df = add_since_minutes(df)
@@ -112,20 +112,15 @@ def final_features_actuator_classification() -> list:
 def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
     dt_local = pd.to_datetime(df["local_datetime"], errors="coerce")
     dt_utc = pd.to_datetime(df["utc_datetime"], errors="coerce", utc=True)
-
     hour = dt_local.dt.hour.fillna(0).astype(int)
     minute = dt_local.dt.minute.fillna(0).astype(int)
     hour_frac = (hour + minute/60.0) % 24
-
-    df["hour_sin"] = np.sin(2*np.pi*hour_frac/24)
-    df["hour_cos"] = np.cos(2*np.pi*hour_frac/24)
-
+    df["hour_sin"] = np.sin(2 * np.pi * hour_frac / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * hour_frac / 24)
     sr_utc = pd.to_datetime(df.get("sunrise_time"), errors="coerce", utc=True)
     ss_utc = pd.to_datetime(df.get("sunset_time"),  errors="coerce", utc=True)
-
     df["minutes_from_sunrise"] = ((dt_utc - sr_utc).dt.total_seconds() / 60).fillna(0)
     df["minutes_to_sunset"]    = ((ss_utc - dt_utc).dt.total_seconds() / 60).fillna(0)
-
     return df
 
 
@@ -170,38 +165,39 @@ def add_since_minutes(df: pd.DataFrame,
     df.drop(columns=["_dt_utc_parsed"], inplace=True, errors="ignore")
     return df
 
-def add_rolling_features(df: pd.DataFrame, cols: list,
-                         win_short: int = 5, win_long: int = 30,
-                         extra_windows: tuple | list = ()) -> pd.DataFrame:
-    """
-    Retro-compatibile:
-    - Mantiene le colonne già esistenti per 5m/30m con stessi nomi.
-    - Aggiunge opzionalmente finestre extra (es. 60, 180) con i relativi suffissi.
-    - L'accelerazione resta sul window "breve" come prima (_accel_1m).
-    """
-    df = df.sort_values(["device", "utc_datetime"])
-    all_windows = [win_short, win_long] + [w for w in extra_windows if w not in (win_short, win_long)]
-
+def add_rolling_features(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+    feature_config = {
+        'trend': [5, 30],
+        'mean': [30, 60, 180],
+        'std': [30, 60, 180],
+        'accel': 5
+    }
+    df = df.sort_values(by=["device", "utc_datetime"])
     for c in cols:
         g = df.groupby("device")[c]
+        if 'mean' in feature_config:
+            for w in feature_config['mean']:
+                roll = g.rolling(w, min_periods=max(2, w // 3))
+                df[f"{c}_mean_{w}m"] = roll.mean().reset_index(level=0, drop=True)
 
-        # trend per tutte le finestre richieste
-        for w in all_windows:
-            df[f"{c}_trend_{w}m"] = g.diff(w)
+        if 'std' in feature_config:
+            for w in feature_config['std']:
+                roll = g.rolling(w, min_periods=max(2, w // 3))
+                df[f"{c}_std_{w}m"] = roll.std().reset_index(level=0, drop=True)
 
-        # mean/std per tutte le finestre richieste
-        for w in all_windows:
-            roll = g.rolling(w, min_periods=max(2, w // 3))
-            df[f"{c}_mean_{w}m"] = roll.mean().reset_index(level=0, drop=True)
-            df[f"{c}_std_{w}m"]  = roll.std().reset_index(level=0, drop=True)
+        if 'trend' in feature_config:
+            for w in feature_config['trend']:
+                df[f"{c}_trend_{w}m"] = g.diff(w)
 
-        # accelerazione causale (come avevi già: dal trend breve)
-        df[f"{c}_accel_1m"] = df.groupby("device")[f"{c}_trend_{win_short}m"].diff()
+        if 'accel' in feature_config:
+            base_window = feature_config['accel']
+            trend_col = f"{c}_trend_{base_window}m"
+
+            if trend_col not in df:
+                df[trend_col] = g.diff(base_window)
+
+            df[f"{c}_accel_1m"] = df.groupby("device")[trend_col].diff()
     return df
-
-# wrapper opzionale comodo
-def add_long_rolling_features(df: pd.DataFrame, cols: list, long_windows: tuple = (60, 180)) -> pd.DataFrame:
-    return add_rolling_features(df, cols, win_short=5, win_long=30, extra_windows=long_windows)
 
 def add_external_trends(df: pd.DataFrame, cols: list, win_short: int = 5, win_long: int = 30) -> pd.DataFrame:
     for c in cols:

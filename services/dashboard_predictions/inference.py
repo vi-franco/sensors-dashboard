@@ -17,17 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from colab_models.actuator_classification.inference import run_inference as run_classification_inference
 from colab_models.common import get_actuator_names
 
-def _min_utc_index(df):
-    if not isinstance(df.index, pd.DatetimeIndex):
-        df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
-    else:
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC")
-        else:
-            df.index = df.index.tz_convert("UTC")
-    df.index = df.index.floor("min")
-    df = df[~df.index.duplicated(keep="last")]
-    return df
+from utils.functions import round_to_exact_minute
 
 if __name__ == "__main__":
     print(f"\n--- Starting inference: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
@@ -45,32 +35,25 @@ if __name__ == "__main__":
 
     for device in devices:
         device_id = device['device_id']
-        lat = device['latitude']; lon = device['longitude']
+        lat = device['latitude'];
+        lon = device['longitude']
         print(f"\n{'='*20} Processing Device: {device_id} at ({lat}, {lon}) {'='*20}")
-        status = {'level': 0, 'message': 'OK'}
 
+        status = {'level': 0, 'message': 'OK'}
         history_df, status = helpers.get_sensor_history(device_id, status)
         if history_df is None or history_df.empty:
             print(f"[ERROR] {status.get('message','No history')} for {device_id}. Skipping.")
             continue
 
-        weather_history_df = helpers.manage_weather_history(device_id=device_id, lat=lat, lon=lon)
+        weather_history_df = helpers.get_external_weather_df(lat=lat, lon=lon)
         if weather_history_df is None or weather_history_df.empty:
             print(f"[ERROR] No weather data for {device_id}. Skipping.")
             continue
 
-        history_df = _min_utc_index(history_df)
-        weather_history_df = _min_utc_index(weather_history_df)
-
-        weather_history_df.index.name = 'utc_datetime'
-        merged_df = history_df.join(weather_history_df, how='left')
-        merged_df = merged_df.drop(columns=["utc_datetime"], errors="ignore")
-        merged_df = merged_df.reset_index().rename(columns={"index": "utc_datetime"})
-        num_cols = merged_df.select_dtypes(include="number").columns
-        merged_df[num_cols] = merged_df[num_cols].ffill().bfill()
-        non_num_cols = merged_df.columns.difference(num_cols)
-        merged_df[non_num_cols] = merged_df[non_num_cols].ffill().bfill()
-        merged_df = merged_df.infer_objects(copy=False)
+        merged_df = sensor_df.join(weather_df, how='left')
+        if not weather_df.empty:
+            weather_cols = weather_df.columns.difference(sensor_df.columns)
+            merged_df[weather_cols] = merged_df[weather_cols].ffill()
 
         states, probs, class_status = run_classification_inference(merged_df)
         if states is None:

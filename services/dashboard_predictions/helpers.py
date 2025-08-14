@@ -15,151 +15,100 @@ import pandas as pd
 # ==============================================================================
 # --- DATA FETCHING FUNCTIONS ---
 # ==============================================================================
-def manage_weather_history(device_id, lat, lon):
-    """
-    Gestisce cache e storico dei dati meteo per un dispositivo specifico.
-    Questa funzione ora è l'unico punto di contatto per i dati meteo esterni.
-    """
-    # Assicura che le directory per cache e storici esistano
-    config.OWM_CACHE_DIR.mkdir(exist_ok=True)
-    config.WEATHER_HISTORY_DIR.mkdir(exist_ok=True)
-    
-    cache_file_path = config.OWM_CACHE_DIR / f"owm_cache_{device_id}.json"
-    history_file_path = config.WEATHER_HISTORY_DIR / f"weather_history_{device_id}.json"
 
-    # --- 1. GESTIONE CACHE SPECIFICA PER DISPOSITIVO ---
-    current_weather = None
-    if cache_file_path.exists() and (time.time() - os.path.getmtime(cache_file_path)) < (config.OWM_CACHE_MINUTES * 60):
-        try:
-            with open(cache_file_path, 'r') as f:
-                current_weather = json.load(f)
-            print(f"[LOG] Weather: Using cached data for device {device_id}.")
-        except (IOError, json.JSONDecodeError):
-            current_weather = None
-
-    if not current_weather:
-        print(f"[LOG] Weather: Calling OpenWeatherMap API for device {device_id} ({lat}, {lon})...")
-        url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={config.OWM_API_KEY}&units=metric"
-        try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            api_response_data = response.json()
-
-            timezone_shift = api_response_data.get('timezone', 0)
-            dt_epoch = api_response_data.get('dt')
-
-            current_weather = {
-                "temperature_external": api_response_data['main']['temp'],
-                "humidity_external": api_response_data['main']['humidity'],
-                "ground_level_pressure": api_response_data['main'].get('pressure'),
-                "wind_speed": api_response_data['wind']['speed'],
-                "clouds_percentage": api_response_data['clouds']['all'],
-                "rain_1h": api_response_data.get('rain', {}).get('1h', 0.0),
-                "lat": float(lat),
-                "lng": float(lon),
-                "sunrise_time": datetime.fromtimestamp(api_response_data['sys']['sunrise'], timezone.utc).isoformat(),
-                "sunset_time": datetime.fromtimestamp(api_response_data['sys']['sunset'], timezone.utc).isoformat(),
-                "local_datetime": datetime.fromtimestamp(dt_epoch + timezone_shift, timezone.utc).isoformat() if dt_epoch is not None else None,
-                "dt": dt_epoch,
-                "timezone": timezone_shift,
-                "absolute_humidity_external": calculate_absolute_humidity(api_response_data['main']['temp'], api_response_data['main']['humidity']),
-                "dew_point_external": calculate_dew_point(api_response_data['main']['temp'], api_response_data['main']['humidity']),
-            }
-            with open(cache_file_path, 'w') as f:
-                json.dump(current_weather, f)
-        except requests.exceptions.RequestException as e:
-            print(f"[ERROR] Weather API call failed for device {device_id}: {e}")
-            return pd.DataFrame()  # DF vuoto in caso di fallimento grave
-
-    # --- 2. GESTIONE STORICO SPECIFICO PER DISPOSITIVO ---
-    history = []
-    now = datetime.now(timezone.utc)
-    if history_file_path.exists():
-        try:
-            with open(history_file_path, 'r') as f:
-                history = json.load(f)
-        except (IOError, json.JSONDecodeError):
-            history = []
-
-    # timestamp osservazione: uso 'now' come riferimento storico uniforme
-    current_weather['utc_datetime'] = now.isoformat()
-    history.append(current_weather)
-
-    cutoff_time = now - timedelta(minutes=config.WEATHER_HISTORY_MINUTES)
-    history = [rec for rec in history if datetime.fromisoformat(rec['utc_datetime']) > cutoff_time]
-
-    with open(history_file_path, 'w') as f:
-        json.dump(history, f, indent=2)
-
-    # --- 3. CREAZIONE DATAFRAME FINALE ---
-    weather_df = pd.DataFrame(history)
-    # parse e indice temporale
-    weather_df['utc_datetime'] = pd.to_datetime(weather_df['utc_datetime'], utc=True, errors='coerce')
-    weather_df = weather_df.set_index('utc_datetime').sort_index()
-    weather_df = weather_df[~weather_df.index.duplicated(keep='last')]
-
-    # MEDIA solo sulle colonne numeriche
-    num_cols = weather_df.select_dtypes(include='number').columns
-    num_resampled = weather_df[num_cols].resample('min').mean()
-
-    # Per le non-numeriche: prendi l'ultimo valore noto al minuto e propaga
-    non_num_cols = weather_df.columns.difference(num_cols)
-    if len(non_num_cols) > 0:
-        non_num_resampled = weather_df[non_num_cols].resample('min').last().ffill()
-        weather_df_resampled = num_resampled.join(non_num_resampled)
-    else:
-        weather_df_resampled = num_resampled
-
-    # Interpola i soli numerici; poi ffill/bfill per sicurezza
-    weather_df_resampled[num_cols] = (
-        weather_df_resampled[num_cols]
-        .interpolate(method='linear', limit_direction='both')
-        .ffill()
-        .bfill()
-    )
-    weather_df_resampled = weather_df_resampled.copy()
-    weather_df_resampled["utc_datetime"] = weather_df_resampled.index
-    return weather_df_resampled
-
-    print(f"[LOG] Weather history for {device_id} managed. {len(weather_df_resampled)} records available.")
-    return weather_df_resampled
-
-def get_sensor_history(device_id, status):
-    print(f"[LOG] InfluxDB: Fetching last {config.HISTORY_MINUTES} min for {device_id}...")
+def get_external_weather_df(lat: float, lon: float) -> pd.DataFrame:
     try:
-        client = InfluxDBClient(host=config.INFLUXDB_HOST, port=config.INFLUXDB_PORT, database=config.INFLUXDB_DATABASE)
+        with sqlite3.connect(config.DB_PATH) as conn:
+            query = "SELECT * FROM external_weather WHERE lat = ? AND lng = ? ORDER BY dt;"
+            df = pd.read_sql_query(query, conn, params=(lat, lon))
+    except sqlite3.Error as e:
+        print(f"Errore DB: {e}", file=sys.stderr)
+        return pd.DataFrame()
+
+    if df.empty:
+        print(f"Nessun dato meteo trovato nel DB per ({lat}, {lon}).")
+        return df
+
+    rename_map = {
+        'temperature': 'temperature_external', 'humidity': 'humidity_external',
+        'pressure': 'ground_level_pressure', 'timezone_offset': 'timezone'
+    }
+    df = df.rename(columns=rename_map)
+
+    df['dew_point_external'] = df.apply(lambda r: calculate_dew_point(r.get('temperature_external'), r.get('humidity_external')), axis=1)
+    df['absolute_humidity_external'] = df.apply(lambda r: calculate_absolute_humidity(r.get('temperature_external'), r.get('humidity_external')), axis=1)
+    df['sunrise_time'] = pd.to_datetime(df['sunrise_time'], unit='s', utc=True)
+    df['sunset_time'] = pd.to_datetime(df['sunset_time'], unit='s', utc=True)
+    df['local_datetime'] = pd.to_datetime(df['dt'] + df['timezone'], unit='s', utc=True).dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    df['utc_datetime'] = pd.to_datetime(df['dt'], unit='s', utc=True)
+    df = df.set_index('utc_datetime')
+
+    now_utc = pd.Timestamp.now(tz='UTC')
+    df.loc[now_utc] = df.iloc[-1].copy()
+
+    numeric_cols = df.select_dtypes(include=np.number).columns
+    df_num = df[numeric_cols].resample('min').mean().interpolate(method='linear')
+
+    non_numeric_cols = df.columns.difference(numeric_cols)
+    df_non_num = df[non_numeric_cols].resample('min').ffill()
+
+    df_final = df_num.join(df_non_num)
+    df_final['utc_datetime'] = df_final.index
+
+    final_columns = [
+        "temperature_external", "humidity_external", "ground_level_pressure",
+        "wind_speed", "clouds_percentage", "rain_1h", "lat", "lng",
+        "sunrise_time", "sunset_time", "local_datetime", "dt", "timezone",
+        "absolute_humidity_external", "dew_point_external", "utc_datetime"
+    ]
+
+    return df_final[[col for col in final_columns if col in df_final.columns]]
+
+def get_sensor_history(device_id: str, status: Dict[str, Any]) -> Tuple[Optional[pd.DataFrame], Dict[str, Any]]:
+    try:
+        client = InfluxDBClient(
+            host=config.INFLUXDB_HOST,
+            port=config.INFLUXDB_PORT,
+            database=config.INFLUXDB_DATABASE
+        )
         query = f'SELECT * FROM "{config.INFLUXDB_MEASUREMENT}" WHERE "device" = \'{device_id}\' AND time >= now() - {config.HISTORY_MINUTES}m'
-        df = pd.DataFrame(list(client.query(query).get_points()))
+        points = client.query(query).get_points()
+        df = pd.DataFrame(list(points))
 
         if df.empty:
-            status.update({'message': 'No recent data from InfluxDB.', 'level': 2})
+            status.update({'message': 'Nessun dato recente trovato su InfluxDB.', 'level': 2})
             return None, status
 
-        df['utc_datetime'] = pd.to_datetime(df['time'], utc=True)
+        df['utc_datetime'] = pd.to_datetime(df['time'])
         df = df.set_index('utc_datetime').sort_index()
 
-        numeric_cols = ['temperature', 'humidity', 'co2', 'voc']
-        df_numeric = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
+        expected_numeric = ['temperature', 'humidity', 'co2', 'voc']
+        numeric_cols = [col for col in expected_numeric if col in df.columns]
+        df_numeric = df[numeric_cols].apply(pd.to_numeric, errors='coerce').dropna()
+
         df_resampled = df_numeric.resample('min').mean().interpolate(method='linear', limit_direction='both')
 
         if len(df_resampled) < config.MIN_RECORDS_REQUIRED:
-            status.update({'message': f'Insufficient data after cleaning ({len(df_resampled)} points).', 'level': 2})
+            status.update({'message': f'Dati insufficienti dopo la pulizia ({len(df_resampled)} punti).', 'level': 2})
             return None, status
 
-        df_resampled = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
-        df_resampled['device'] = device_id
-        df_resampled['dew_point_sensor'] = df_resampled.apply(
+        df_final = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
+        df_final['device'] = device_id
+
+        df_final['dew_point_sensor'] = df_final.apply(
             lambda row: calculate_dew_point(row['temperature_sensor'], row['humidity_sensor']),
             axis=1
         )
-        df_resampled['absolute_humidity_sensor'] = df_resampled.apply(
+        df_final['absolute_humidity_sensor'] = df_final.apply(
             lambda row: calculate_absolute_humidity(row['temperature_sensor'], row['humidity_sensor']),
             axis=1
         )
-        print(f"[LOG] InfluxDB history processed successfully for {device_id}.")
-        return df_resampled, status
+
+        status.update({'message': 'Dati dei sensori elaborati con successo.', 'level': 0})
+        return df_final, status
+
     except Exception as e:
-        status.update({'message': f"InfluxDB Error: {e}", 'level': 2})
+        status.update({'message': f"Errore InfluxDB: {e}", 'level': 2})
         return None, status
 
 def get_last_known_states(device_id):
