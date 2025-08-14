@@ -128,25 +128,25 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
         if 'mean' in feature_config:
             for w in feature_config['mean']:
                 roll = g.rolling(w, min_periods=max(2, w // 3))
-                df[f"{c}_mean_{w}m"] = roll.mean().reset_index(level=0, drop=True)
+                df[f"{c}_mean_{w}m"] = roll.mean().reset_index(level=[0, 1], drop=True)
 
         if 'std' in feature_config:
             for w in feature_config['std']:
                 roll = g.rolling(w, min_periods=max(2, w // 3))
-                df[f"{c}_std_{w}m"] = roll.std().reset_index(level=0, drop=True)
+                df[f"{c}_std_{w}m"] = roll.std().reset_index(level=[0, 1], drop=True)
 
         if 'trend' in feature_config:
             for w in feature_config['trend']:
-                df[f"{c}_trend_{w}m"] = g.diff(w)
+                df[f"{c}_trend_{w}m"] = g.diff(w).reset_index(level=[0, 1], drop=True)
 
         if 'accel' in feature_config:
             base_window = feature_config['accel']
             trend_col = f"{c}_trend_{base_window}m"
 
             if trend_col not in df:
-                df[trend_col] = g.diff(base_window)
+                df[trend_col] = g.diff(base_window).reset_index(level=[0, 1], drop=True)
 
-            df[f"{c}_accel_1m"] = df.groupby("device")[trend_col].diff()
+            df[f"{c}_accel_1m"] = df.groupby(["device", "period_id"])[trend_col].diff().reset_index(level=[0, 1], drop=True)
     return df
 
 def add_external_trends(df: pd.DataFrame, cols: list) -> pd.DataFrame:
