@@ -11,7 +11,9 @@ def load_unified_dataset(folder_path: Path) -> pd.DataFrame:
     frames = []
     for fp in folder_path.glob("*.csv"):
         try:
-            frames.append(pd.read_csv(fp, on_bad_lines="skip"))
+            df_single = pd.read_csv(fp, on_bad_lines="skip")
+            df_single['period_id'] = fp.stem
+            frames.append(df_single)
         except Exception as e:
             print(f" -> Errore lettura {fp.name}: {e}")
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

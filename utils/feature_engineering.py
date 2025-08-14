@@ -13,6 +13,7 @@ def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
 def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     required_columns = [
         "device",
+        "group_by"
         "utc_datetime",
         "local_datetime",
         "lat",
@@ -120,9 +121,10 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
         'std': [15, 30, 60],
         'accel': 5
     }
-    df = df.sort_values(by=["device", "utc_datetime"])
+    df = df.sort_values(by=["device", "period_id", "utc_datetime"])
+    grouper = df.groupby(["device", "period_id"])
     for c in cols:
-        g = df.groupby("device")[c]
+        g = grouper[c]
         if 'mean' in feature_config:
             for w in feature_config['mean']:
                 roll = g.rolling(w, min_periods=max(2, w // 3))

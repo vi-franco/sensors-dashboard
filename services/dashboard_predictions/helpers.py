@@ -102,6 +102,7 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
 
         df_final = df_resampled.rename(columns={"temperature": "temperature_sensor", "humidity": "humidity_sensor"})
         df_final['device'] = device_id
+        df_final['period_id'] = 1
         df_final.reset_index(inplace=True)
 
         df_final['dew_point_sensor'] = df_final.apply(

@@ -69,7 +69,7 @@ if final_df.empty:
 
 final_df["utc_datetime"] = pd.to_datetime(final_df["utc_datetime"], errors="coerce", utc=True)
 final_df.dropna(subset=["utc_datetime", "device"], inplace=True)
-final_df.sort_values(["device", "utc_datetime"], inplace=True)
+final_df.sort_values(["device", "period_id", "utc_datetime"], inplace=True)
 
 for col in STATE_COLS:
     if col in final_df.columns:
@@ -118,22 +118,21 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import (
     roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 )
-from sklearn.model_selection import TimeSeriesSplit
+from skmultilearn.model_selection import IterativeStratification
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 if data_for_training.empty:
     raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
 
-df_train = data_for_training.sort_values('utc_datetime').reset_index(drop=True)
+df_train = data_for_training.sample(frac=1, random_state=42).reset_index(drop=True)
 
 X_df = df_train[features]
 X_df = X_df.fillna(X_df.mean())
-
 y_df = df_train[targets].astype(int)
 
 N_SPLITS = 5
-tscv = TimeSeriesSplit(n_splits=N_SPLITS)
+kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
 
 def create_model(input_dim, output_dim):
     inp = Input(shape=(input_dim,))
@@ -154,7 +153,7 @@ def create_model(input_dim, output_dim):
 
 histories, all_y_val, all_y_pred_probs = [], [], []
 
-for fold_no, (tr_idx, va_idx) in enumerate(tscv.split(X_df), 1):
+for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
     print(f"---------------- Fold {fold_no}/{N_SPLITS} ----------------")
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
     y_tr, y_va = y_df.iloc[tr_idx], y_df.iloc[va_idx]
