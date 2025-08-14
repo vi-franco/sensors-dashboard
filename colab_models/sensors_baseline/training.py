@@ -152,6 +152,15 @@ print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione
 x_scaler = StandardScaler().fit(X_train)
 y_scaler = StandardScaler().fit(y_train)
 
+y_scale_tf = tf.constant(y_scaler.scale_.astype("float32"))
+y_mean_tf  = tf.constant(y_scaler.mean_.astype("float32"))
+
+def mae_real_units(y_true_s, y_pred_s):
+    # y_true_s / y_pred_s sono in spazio standardizzato
+    y_true = y_true_s * y_scale_tf + y_mean_tf
+    y_pred = y_pred_s * y_scale_tf + y_mean_tf
+    return tf.reduce_mean(tf.abs(y_true - y_pred))
+
 X_train_s = x_scaler.transform(X_train).astype("float32")
 X_val_s   = x_scaler.transform(X_val).astype("float32")
 y_train_s = y_scaler.transform(y_train).astype("float32")
@@ -176,14 +185,11 @@ def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0
             x = layers.Dropout(dropout)(x)
     out = layers.Dense(output_dim, activation="linear")(x)
     model = models.Model(inputs=inp, outputs=out)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-        loss=Huber(delta=1.0),
-        metrics=["mae"],
-    )
     return model
 
+optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4, clipnorm=1.0)
 model = create_regression_model(input_dim=X_train_s.shape[1], output_dim=y_train_s.shape[1])
+model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", mae_real_units])
 
 history = model.fit(
     X_train_s, y_train_s,
@@ -191,8 +197,8 @@ history = model.fit(
     epochs=100,
     batch_size=2048,
     callbacks=[
-        EarlyStopping(monitor="val_mae", patience=8, restore_best_weights=True),
-        ReduceLROnPlateau(monitor="val_mae", factor=0.5, patience=3, min_lr=1e-5),
+        tf.keras.callbacks.EarlyStopping(monitor="val_mae_real_units", patience=8, restore_best_weights=True),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor="val_mae_real_units", factor=0.5, patience=3, min_lr=1e-5),
     ],
     verbose=1
 )
