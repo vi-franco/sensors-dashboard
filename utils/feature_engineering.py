@@ -165,7 +165,7 @@ def add_since_minutes(df: pd.DataFrame,
     df.drop(columns=["_dt_utc_parsed"], inplace=True, errors="ignore")
     return df
 
-def add_rolling_features(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
+def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     feature_config = {
         'trend': [5, 30],
         'mean': [30, 60, 180],
