@@ -3,12 +3,41 @@ import numpy as np
 from utils.functions import vpd_kpa
 
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
+    return add_features_actuator_classification(df)
+
+
+def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
     df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"])
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
     df = add_event_flags(df)
     return df
+
+
+def add_targets_baseline_prediction(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    columns_to_predict = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
+    horizons = [15, 30, 60]
+
+    df.sort_values(by=["device", "period_id", "utc_datetime"], inplace=True)
+
+    for col in columns_to_predict:
+        if col not in df.columns: continue
+        for h in horizons:
+            # Colonna per la valutazione (valore assoluto futuro)
+            eval_name = f"{col}_eval_{h}m"
+            df[eval_name] = df.groupby(["device", "period_id"])[col].shift(-h)
+
+            # Colonna target per il training (il delta, cioè la differenza)
+            target_name = f"{col}_pred_{h}m"
+            df[target_name] = df[eval_name] - df[col]
+
+    return df
+
+
+def ensure_min_columns_actuator_classification(df: pd.DataFrame):
+    return ensure_min_columns_actuator_classification(df)
 
 def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     required_columns = [
@@ -38,6 +67,9 @@ def ensure_min_columns_actuator_classification(df: pd.DataFrame):
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         raise ValueError(f"DataFrame is missing required columns for actuator classification: {', '.join(missing_columns)}")
+
+def final_features_baseline_prediction() -> list:
+    return final_features_actuator_classification()
 
 def final_features_actuator_classification() -> list:
     return [
