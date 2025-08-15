@@ -86,13 +86,13 @@ print("\n--- [SEZIONE 3] Definizione Feature e Split Automatico per Periodo ---"
 columns_to_predict = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
 horizons = [15, 30, 60]
 
-features_for_model = final_features_baseline_prediction()
-targets = [f"{col}_pred_{h}m" for col in columns_to_predict for h in horizons]
+FEATURES = final_features_baseline_prediction()
+TARGETS = [f"{col}_pred_{h}m" for col in columns_to_predict for h in horizons]
 
 df = df.replace([np.inf, -np.inf], np.nan).dropna()
-print("Esempi di feature e target:")
-print(df[features_for_model + targets].head(5).to_string(index=False))
 
+print("Esempi di feature e target:")
+print(df[FEATURES + TARGETS].head(5).to_string(index=False))
 
 # Split per period_id (shuffle + 80/20)
 all_period_ids = pd.Series(df["period_id"]).dropna().unique()
@@ -100,17 +100,25 @@ rng = np.random.RandomState(42)
 rng.shuffle(all_period_ids)
 
 test_size_percentage = 0.20
-split_point = int(len(all_period_ids) * test_size_percentage)
+val_within_train_percentage = 0.20
 
-test_period_ids = all_period_ids[:split_point]
-train_period_ids = all_period_ids[split_point:]
+n_total = len(all_period_ids)
+n_test = int(n_total * test_size_percentage)
 
-print(f"Split automatico: {len(train_period_ids)} periodi per il training, {len(test_period_ids)} per il test.")
+test_period_ids = all_period_ids[:n_test]
+trainval_period_ids = all_period_ids[n_test:]
+
+n_val = int(len(trainval_period_ids) * val_within_train_percentage)
+val_period_ids = trainval_period_ids[:n_val]
+train_period_ids = trainval_period_ids[n_val:]
+
+print(f"Split per periodi -> train: {len(train_period_ids)}, val: {len(val_period_ids)}, test: {len(test_period_ids)}")
 
 data_for_training = df[df["period_id"].isin(train_period_ids)].copy()
-test_df = df[df["period_id"].isin(test_period_ids)].copy()
+val_df            = df[df["period_id"].isin(val_period_ids)].copy()
+test_df           = df[df["period_id"].isin(test_period_ids)].copy()
 
-print(f"Righe Training: {len(data_for_training)} · Righe Test: {len(test_df)}")
+print(f"Righe Training: {len(data_for_training)} · Righe Validation: {len(val_df)} · Righe Test: {len(test_df)}")
 print("✅ [SEZIONE 3] OK.")
 
 # ==============================================================================
@@ -120,37 +128,20 @@ print("\n--- [SEZIONE 4] Inizio Addestramento Modello di Regressione ---")
 
 if data_for_training.empty:
     raise ValueError("DataFrame 'data_for_training' vuoto. Impossibile addestrare.")
+if val_df.empty:
+    raise ValueError("Validation set vuoto. Controlla lo split per periodi.")
 
-# 4.1) Ordino temporalmente per split causale
 df_train_sorted = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
-X_df = df_train_sorted[features_for_model].copy()
-y_df = df_train_sorted[targets].copy()   # <-- delta già creati in SEZIONE 2
+df_val_sorted   = val_df.sort_values("utc_datetime").reset_index(drop=True)
 
-# 4.2) Split temporale train/val (80/20)
-val_split_percentage = 0.20
-split_point_tv = int(len(X_df) * (1 - val_split_percentage))
+X_train = df_train_sorted[FEATURES].copy()
+y_train = df_train_sorted[TARGETS].copy()
+X_val   = df_val_sorted[FEATURES].copy()
+y_val   = df_val_sorted[TARGETS].copy()
 
-X_train = X_df.iloc[:split_point_tv].copy()
-y_train = y_df.iloc[:split_point_tv].copy()
-X_val   = X_df.iloc[split_point_tv:].copy()
-y_val   = y_df.iloc[split_point_tv:].copy()
+print(f"Train: {len(X_train)} righe · Val: {len(X_val)} righe")
 
-print(f"Split temporale: {len(X_train)} righe training, {len(X_val)} validazione.")
-
-# 4.3) Pulizia NaN/Inf su ciascun set (mantiene allineamento X/Y)
-def _clean_pair(X, Y):
-    X = X.replace([np.inf, -np.inf], np.nan)
-    Y = Y.replace([np.inf, -np.inf], np.nan)
-    mask = (~X.isna().any(axis=1)) & (~Y.isna().any(axis=1))
-    dropped = int(len(X) - mask.sum())
-    return X.loc[mask], Y.loc[mask], dropped
-
-X_train, y_train, drop_tr = _clean_pair(X_train, y_train)
-X_val,   y_val,   drop_v  = _clean_pair(X_val,   y_val)
-if drop_tr or drop_v:
-    print(f"🧹 Rimosse {drop_tr} righe train e {drop_v} righe val non valide (NaN/Inf).")
-
-# 4.4) Scaling (fit solo su TRAIN)
+# Scaling (fit solo su TRAIN)
 x_scaler = StandardScaler().fit(X_train)
 y_scaler = StandardScaler().fit(y_train)
 
@@ -159,15 +150,7 @@ X_val_s   = x_scaler.transform(X_val).astype("float32")
 y_train_s = y_scaler.transform(y_train).astype("float32")
 y_val_s   = y_scaler.transform(y_val).astype("float32")
 
-# 4.5) Check che tutto sia finito
-def _check_finite(name, arr):
-    if not np.all(np.isfinite(arr)):
-        bad = int((~np.isfinite(arr)).sum())
-        raise ValueError(f"{name} contiene {bad} valori non finiti.")
-_check_finite("X_train_s", X_train_s)
-_check_finite("y_train_s", y_train_s)
-_check_finite("X_val_s",   X_val_s)
-_check_finite("y_val_s",   y_val_s)
+print("✅ Scaling completato (fit su train, transform su train/val).")
 
 # 4.6) Modello
 from tensorflow.keras import layers, models, optimizers, losses, callbacks
@@ -213,9 +196,9 @@ try:
     joblib.dump(x_scaler, str(SAVED_MODEL_PATH / "prediction_x_scaler.joblib"))
     joblib.dump(y_scaler, str(SAVED_MODEL_PATH / "prediction_y_scaler.joblib"))
     with open(SAVED_MODEL_PATH / "prediction_features.json", "w") as f:
-        json.dump(features_for_model, f, ensure_ascii=False, indent=2)
+        json.dump(FEATURES, f, ensure_ascii=False, indent=2)
     with open(SAVED_MODEL_PATH / "prediction_targets.json", "w") as f:
-        json.dump(targets, f, ensure_ascii=False, indent=2)
+        json.dump(TARGETS, f, ensure_ascii=False, indent=2)
     print(f"✅ Modello e artefatti salvati in: {SAVED_MODEL_PATH}")
 except Exception as e:
     print(f"❌ Errore durante il salvataggio degli artefatti: {e}")
@@ -259,8 +242,8 @@ except Exception as e:
 print("\n--- [SEZIONE 5] Inizio Analisi Dettagliata e Valutazione ---")
 
 # --- 5.1) Predizioni sul test set ---
-X_test_df = test_df[features_for_model].copy()
-y_test_df = test_df[targets].copy()
+X_test_df = test_df[FEATURES].copy()
+y_test_df = test_df[TARGETS].copy()
 
 # Pulizia test: tolgo righe non valide
 X_test_df = X_test_df.replace([np.inf, -np.inf], np.nan)
