@@ -61,7 +61,7 @@ def run_prediction_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[st
     for i, target_name in enumerate(target_names):
         predicted_delta = y_pred_deltas[i]
 
-        match = re.match(r'(.+)_target_(\d+)m', target_name)
+        match = re.match(r'(.+)_pred_(\d+)m', target_name)
         if not match:
             continue
 

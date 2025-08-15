@@ -238,72 +238,49 @@ except Exception as e:
 # ==============================================================================
 print("\n--- [SEZIONE 5] Inizio Analisi Dettagliata e Valutazione ---")
 
-# --- 5.1) Predizioni sul test set ---
-X_test_df = test_df[FEATURES].copy()
-y_test_df = test_df[TARGETS].copy()
-
-# Pulizia test: tolgo righe non valide
-X_test_df = X_test_df.replace([np.inf, -np.inf], np.nan)
-y_test_df = y_test_df.replace([np.inf, -np.inf], np.nan)
-mask_ok = (~X_test_df.isna().any(axis=1)) & (~y_test_df.isna().any(axis=1))
-X_test_df = X_test_df.loc[mask_ok]
-y_test_df = y_test_df.loc[mask_ok]
-
-# Scaling
-X_test_s = x_scaler.transform(X_test_df).astype("float32")
-
-# Predizione delta standardizzati
-y_pred_s = model.predict(X_test_s, batch_size=1024, verbose=0)
-
-# Inverse transform -> delta in unità reali
-y_pred_delta = y_scaler.inverse_transform(y_pred_s)
-y_true_delta = y_scaler.inverse_transform(y_test_df)
-
-# --- 5.2) Conversione in valori assoluti ---
-columns_to_predict = ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc"]
-horizons = [15, 30, 60]
-
-y_pred_abs = {}
-y_true_abs = {}
-
-for i, (col, h) in enumerate([(c, t) for c in columns_to_predict for t in horizons]):
-    current_vals = test_df.loc[mask_ok, col].values  # valore attuale
-    y_pred_abs[f"{col}_pred_{h}m"] = current_vals + y_pred_delta[:, i]
-    y_true_abs[f"{col}_eval_{h}m"] = current_vals + y_true_delta[:, i]
-
-# --- 5.3) Calcolo metriche ---
+import re, numpy as np
 from sklearn.metrics import mean_absolute_error
-import numpy as np
 
-for h in horizons:
+# 5.1) Preparo test set pulito e allineato
+X_test_df = test_df[FEATURES].replace([np.inf, -np.inf], np.nan)
+y_test_df = test_df[TARGETS].replace([np.inf, -np.inf], np.nan)
+mask_ok = (~X_test_df.isna().any(axis=1)) & (~y_test_df.isna().any(axis=1))
+X_test_df = X_test_df.loc[mask_ok].copy()
+y_test_df = y_test_df.loc[mask_ok].copy()
+
+# 5.2) Predizione (delta standardizzati -> delta reali) rispettando l'ordine TARGETS
+X_test_s = x_scaler.transform(X_test_df).astype("float32")
+y_pred_s = model.predict(X_test_s, verbose=0)
+y_pred_delta = y_scaler.inverse_transform(
+    np.asarray(pd.DataFrame(y_pred_s, columns=TARGETS), dtype=np.float64)
+)
+y_true_delta = y_scaler.inverse_transform(y_test_df.values.astype(np.float64))
+
+# 5.3) Ricostruzione valori assoluti e metriche per orizzonte
+units = {"temperature_sensor":"°C","absolute_humidity_sensor":"g/m³","co2":"ppm","voc":"index"}
+by_h = {}  # { "15": {var: (true_abs, pred_abs)} , ... }
+
+for i, tname in enumerate(TARGETS):
+    m = re.match(r'(.+)_pred_(\d+)m', tname)
+    if not m:
+        continue
+    base_col, h = m.groups()
+    true_abs = X_test_df[base_col].values + y_true_delta[:, i]
+    pred_abs = X_test_df[base_col].values + y_pred_delta[:, i]
+    by_h.setdefault(h, {})[base_col] = (true_abs, pred_abs)
+
+for h in sorted(by_h.keys(), key=lambda x: int(x)):
     print(f"\nOrizzonte @ {h} min:")
-    for col in columns_to_predict:
-        true_vals = y_true_abs[f"{col}_eval_{h}m"]
-        pred_vals = y_pred_abs[f"{col}_pred_{h}m"]
-
-        # Check finite
-        mask_finite = np.isfinite(true_vals) & np.isfinite(pred_vals)
-        valid_count = mask_finite.sum()
-
-        if valid_count == 0:
-            print(f"  - {col:<12}: MAE = N/A (nessun valore valido)")
+    for base_col, (y_true_abs, y_pred_abs) in by_h[h].items():
+        msk = np.isfinite(y_true_abs) & np.isfinite(y_pred_abs)
+        if msk.sum() == 0:
+            print(f"  - {base_col}: MAE = N/A (nessun valore valido)")
             continue
-
-        mae_val = mean_absolute_error(true_vals[mask_finite], pred_vals[mask_finite])
-        p50 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 50)
-        p90 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 90)
-        p95 = np.percentile(np.abs(true_vals[mask_finite] - pred_vals[mask_finite]), 95)
-
-        unit_map = {
-            "temperature_sensor": "°C",
-            "absolute_humidity_sensor": "g/m³",
-            "co2": "ppm",
-            "voc": "index"
-        }
-
-        print(f"  - {col:<12}: MAE = {mae_val:.3f} {unit_map[col]}  (validi={valid_count})")
-        print(f"    └─ Percentili (P50/P90/P95): {p50:.3f} / {p90:.3f} / {p95:.3f} {unit_map[col]}")
+        ae = np.abs(y_true_abs[msk] - y_pred_abs[msk])
+        mae = mean_absolute_error(y_true_abs[msk], y_pred_abs[msk])
+        p50, p90, p95 = np.percentile(ae, [50, 90, 95])
+        u = units.get(base_col, "")
+        print(f"  - {base_col}: MAE = {mae:.3f} {u}  (validi={msk.sum()})")
+        print(f"    └─ Percentili (P50/P90/P95): {p50:.3f} / {p90:.3f} / {p95:.3f} {u}")
 
 print("✅ [SEZIONE 5] Analisi dettagliata completata.")
-
-print("\n🏁 Fine script.")
