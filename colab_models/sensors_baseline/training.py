@@ -27,7 +27,6 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.feature_engineering import (
-    ensure_min_columns_baseline_prediction,
     add_features_baseline_prediction,
     add_targets_baseline_prediction,
     final_features_baseline_prediction,
@@ -74,7 +73,6 @@ print("✅ [SEZIONE 1] Dati caricati.")
 
 print("\n--- [SEZIONE 2] Feature Engineering ---")
 
-ensure_min_columns_baseline_prediction(final_df)
 df = add_features_baseline_prediction(final_df)
 df = add_targets_baseline_prediction(df)
 
