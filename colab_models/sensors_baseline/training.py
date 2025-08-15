@@ -95,7 +95,7 @@ targets = [f"{col}_pred_{h}m" for col in columns_to_predict for h in horizons]
 df = df.copy()
 df.replace([np.inf, -np.inf], np.nan, inplace=True)
 before = len(df)
-df.dropna(subset=targets, inplace=True)
+df.dropna(subset=features_for_model + targets, inplace=True)
 print(f"Righe rimosse per target NaN/Inf: {before - len(df)}")
 
 # print first few rows for debugging completi, non solo head
