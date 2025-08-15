@@ -91,14 +91,7 @@ horizons = [15, 30, 60]
 features_for_model = final_features_baseline_prediction()
 targets = [f"{col}_pred_{h}m" for col in columns_to_predict for h in horizons]
 
-# Rimuovo righe con target mancanti
-df = df.copy()
-df.replace([np.inf, -np.inf], np.nan, inplace=True)
-before = len(df)
-df.dropna(subset=features_for_model + targets, inplace=True)
-print(f"Righe rimosse per target NaN/Inf: {before - len(df)}")
-
-# print first few rows for debugging completi, non solo head
+df = df.replace([np.inf, -np.inf], np.nan).dropna()
 print("Esempi di feature e target:")
 print(df[features_for_model + targets].head(5).to_string(index=False))
 
