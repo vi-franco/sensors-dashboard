@@ -131,11 +131,11 @@ def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
     hour_frac = (hour + minute/60.0) % 24
     df["hour_sin"] = np.sin(2 * np.pi * hour_frac / 24)
     df["hour_cos"] = np.cos(2 * np.pi * hour_frac / 24)
-    sr_utc = pd.to_datetime(df.get("sunrise_time"), errors="coerce", utc=True)
-    ss_utc = pd.to_datetime(df.get("sunset_time"), errors="coerce", utc=True)
-    if sr_utc.notna().all() and ss_utc.notna().all() and (sr_utc.dt.total_seconds() != 0).all() and (ss_utc.dt.total_seconds() != 0).all():
+    sr_utc = pd.to_datetime(df["sunrise_time"], unit="s", errors="coerce", utc=True)
+    ss_utc = pd.to_datetime(df["sunset_time"], unit="s", errors="coerce", utc=True)
+    if sr_utc.notna().any() and ss_utc.notna().any():
         df["minutes_from_sunrise"] = ((dt_utc - sr_utc).dt.total_seconds() / 60).fillna(0)
-        df["minutes_to_sunset"] = ((ss_utc - dt_utc).dt.total_seconds() / 60).fillna(0)
+        df["minutes_to_sunset"]    = ((ss_utc - dt_utc).dt.total_seconds() / 60).fillna(0)
     return df
 
 
