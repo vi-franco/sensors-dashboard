@@ -41,7 +41,6 @@ def run_prediction_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[st
 
 
     try:
-        ensure_min_columns_baseline_prediction(history_df)
         fe_full = add_features_baseline_prediction(history_df.copy())
         fe_last = fe_full.tail(1)
         feature_row = fe_last.reindex(columns=feature_names).fillna(0.0)

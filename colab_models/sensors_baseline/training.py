@@ -155,31 +155,28 @@ print("✅ Scaling completato (fit su train, transform su train/val).")
 # 4.6) Modello
 from tensorflow.keras import layers, models, optimizers, losses, callbacks
 
-def create_regression_model(input_dim, output_dim, width=128, depth=3, dropout=0.1, lr=3e-4):
-    inp = layers.Input(shape=(input_dim,))
-    x = inp
-    for _ in range(depth):
-        x = layers.Dense(width, activation="relu")(x)
-        if dropout:
-            x = layers.Dropout(dropout)(x)
-    out = layers.Dense(output_dim, activation="linear")(x)
-    model = models.Model(inputs=inp, outputs=out)
-    model.compile(
-        optimizer=optimizers.Adam(learning_rate=lr, clipnorm=1.0),
-        loss=losses.Huber(delta=1.0),
-        metrics=["mae"]
-    )
-    return model
+inp = layers.Input(shape=(X_train_s.shape[1],))
+x = layers.Dense(128, activation="relu")(inp)
+x = layers.Dropout(0.1)(x)
+x = layers.Dense(64, activation="relu")(x)
+x = layers.Dropout(0.1)(x)
+x = layers.Dense(32, activation="relu")(x)
+x = layers.Dropout(0.1)(x)
 
-model = create_regression_model(
-    input_dim=X_train_s.shape[1],
-    output_dim=y_train_s.shape[1]
+out = layers.Dense(y_train_s.shape[1], activation="linear")(x)
+
+model = models.Model(inputs=inp, outputs=out)
+model.compile(
+    optimizer=optimizers.Adam(learning_rate=3e-4, clipnorm=1.0),
+    loss=losses.Huber(delta=1.0),
+    metrics=["mae"]
 )
 
-# 4.7) Training
+# Callback
 cb_early = callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10, restore_best_weights=True)
 cb_rlr   = callbacks.ReduceLROnPlateau(monitor="val_loss", mode="min", factor=0.5, patience=5, min_lr=1e-6)
 
+# Training
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
