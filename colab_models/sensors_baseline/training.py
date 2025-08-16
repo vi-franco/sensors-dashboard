@@ -156,12 +156,12 @@ print("✅ Scaling completato (fit su train, transform su train/val).")
 from tensorflow.keras import layers, models, optimizers, losses, callbacks
 
 inp = layers.Input(shape=(X_train_s.shape[1],))
-x = layers.Dense(128, activation="relu")(inp)
-x = layers.Dropout(0.1)(x)
+x = layers.Dense(256, activation="relu")(inp)
+x = layers.Dropout(0.2)(x)
+x = layers.Dense(128, activation="relu")(x)
+x = layers.Dropout(0.2)(x)
 x = layers.Dense(64, activation="relu")(x)
-x = layers.Dropout(0.1)(x)
-x = layers.Dense(32, activation="relu")(x)
-x = layers.Dropout(0.1)(x)
+x = layers.Dropout(0.2)(x)
 
 out = layers.Dense(y_train_s.shape[1], activation="linear")(x)
 
@@ -173,14 +173,14 @@ model.compile(
 )
 
 # Callback
-cb_early = callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=10, restore_best_weights=True)
+cb_early = callbacks.EarlyStopping(monitor="val_loss", mode="min", patience=5, restore_best_weights=True)
 cb_rlr   = callbacks.ReduceLROnPlateau(monitor="val_loss", mode="min", factor=0.5, patience=5, min_lr=1e-6)
 
 # Training
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
-    epochs=10,
+    epochs=100,
     batch_size=2048,
     callbacks=[cb_early, cb_rlr],
     verbose=1
