@@ -116,9 +116,9 @@ if __name__ == "__main__":
                 baseline_predictions.append({
                     "device_id": device_id,
                     "horizon": horizon,
-                    "is_suggestion_for": None,  # baseline
+                    "is_suggestion_for": None,
                     "temperature": values.get("temperature_sensor"),
-                    "humidity": values.get("absolute_humidity_sensor"),
+                    "humidity": t_rha,
                     "co2": values.get("co2"),
                     "voc": values.get("voc"),
                     "heatIndex": t_heat_index,

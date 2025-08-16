@@ -251,10 +251,11 @@ y_test_df = y_test_df.loc[mask_ok].copy()
 # 5.2) Predizione (delta standardizzati -> delta reali) rispettando l'ordine TARGETS
 X_test_s = x_scaler.transform(X_test_df).astype("float32")
 y_pred_s = model.predict(X_test_s, verbose=0)
-y_pred_delta = y_scaler.inverse_transform(
-    np.asarray(pd.DataFrame(y_pred_s, columns=TARGETS), dtype=np.float64)
-)
-y_true_delta = y_scaler.inverse_transform(y_test_df.values.astype(np.float64))
+y_pred_delta = y_scaler.inverse_transform(pd.DataFrame(y_pred_s, columns=TARGETS)[TARGETS])
+y_true_delta = y_scaler.inverse_transform(y_test_df[TARGETS])
+
+print("Range co2 true_delta:", np.min(y_true_delta[:, TARGETS.index("co2_pred_15m")]),
+                                np.max(y_true_delta[:, TARGETS.index("co2_pred_15m")]))
 
 # 5.3) Ricostruzione valori assoluti e metriche per orizzonte
 units = {"temperature_sensor":"°C","absolute_humidity_sensor":"g/m³","co2":"ppm","voc":"index"}
