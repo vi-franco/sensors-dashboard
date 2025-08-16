@@ -180,7 +180,7 @@ cb_rlr   = callbacks.ReduceLROnPlateau(monitor="val_loss", mode="min", factor=0.
 history = model.fit(
     X_train_s, y_train_s,
     validation_data=(X_val_s, y_val_s),
-    epochs=100,
+    epochs=10,
     batch_size=2048,
     callbacks=[cb_early, cb_rlr],
     verbose=1
