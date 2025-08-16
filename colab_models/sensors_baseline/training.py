@@ -252,7 +252,7 @@ y_test_df = y_test_df.loc[mask_ok].copy()
 X_test_s = x_scaler.transform(X_test_df).astype("float32")
 y_pred_s = model.predict(X_test_s, verbose=0)
 y_pred_delta = y_scaler.inverse_transform(pd.DataFrame(y_pred_s, columns=TARGETS)[TARGETS])
-y_true_delta = y_scaler.inverse_transform(y_test_df[TARGETS])
+y_true_delta = y_test_df[TARGETS].to_numpy(dtype=float)
 
 print("Range co2 true_delta:", np.min(y_true_delta[:, TARGETS.index("co2_pred_15m")]),
                                 np.max(y_true_delta[:, TARGETS.index("co2_pred_15m")]))
