@@ -286,10 +286,16 @@ y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
 pos_rate = y_tr.mean(axis=0)
 pos_w = ((1.0 - pos_rate) / (pos_rate + 1e-6)).clip(1.0, 20.0).astype(np.float32)
-sample_w_tr = (1.0 + y_tr * (pos_w - 1.0)).astype(np.float32)  # shape [N,C]
+
+# Collassa a pesi PER-CAMPIONE 1D (evita broadcast error)
+# Idea: media dei pesi delle classi positive del campione; se nessun positivo -> 1.0
+num_pos = y_tr.sum(axis=1, keepdims=False)                  # [N]
+sum_w   = (y_tr * pos_w).sum(axis=1)                        # [N]
+sample_w_tr = np.where(num_pos > 0, sum_w / num_pos, 1.0)   # [N]
+sample_w_tr = sample_w_tr.astype(np.float32)
 
 print("Train pos rate per classe:", np.round(pos_rate, 4).tolist())
-print("Pesi positivi:", np.round(pos_w, 2).tolist())
+print("Peso medio (train):", float(sample_w_tr.mean()))
 
 model = build_lstm_model(input_shape, output_dim)
 es1 = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
