@@ -56,7 +56,7 @@ STRIDE = 1
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
-BATCH_SIZE = 128
+BATCH_SIZE = 256
 EPOCHS_MAX = 30
 LR = 3e-4
 
@@ -162,13 +162,13 @@ def rebalance_folds_by_class(folds, y_all, min_pos=1):
 def build_lstm_model(input_shape, output_dim):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)  # <-- layers.*
-    x = layers.ReLU()(x)                                      # <-- layers.*
-    x = layers.GRU(48, dropout=0.3)(x)                                # <-- layers.*
+    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)
+    x = layers.ReLU()(x)
+    x = layers.GRU(64, dropout=0.2)(x)  # torna a 64/0.2: più stabile
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
-        optimizer=keras.optimizers.Adam(2e-4),
+        optimizer=keras.optimizers.Adam(3e-4, clipnorm=1.0),  # <— clipnorm
         loss="binary_crossentropy",
         metrics=["binary_accuracy", "precision", "recall"]
     )
@@ -262,66 +262,47 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 order = np.argsort(t_train)
 n = len(order)
 
-# 1) Holdout iniziale 85/15
+# Holdout iniziale 85/15
 cut = int(n * 0.85)
-tr_idx = order[:cut]
-va_idx = order[cut:]
 
-def pos_counts(idx):
-    return y_train[idx].sum(axis=0).astype(int)
+def has_pos_neg(idx, y, min_pos=20):
+    # almeno min_pos positivi e almeno 1 negativo per ogni classe
+    yv = y[idx]
+    pos = yv.sum(axis=0)
+    neg = (len(yv) - pos)
+    return (pos >= min_pos).all() and (neg >= 1).all()
 
-pos_val = pos_counts(va_idx)
-print(f"Holdout iniziale: train={len(tr_idx)}  val={len(va_idx)}")
-print("Positivi VAL per classe:", pos_val.tolist())
-
-# 2) Se mancano classi in VAL, allarga la validazione spostando il cut indietro a step del 5%
+# allarga finché tutte le classi hanno abbastanza esempi
 step = int(n * 0.05)
-while (pos_val == 0).any() and cut > 0:
+while cut > 0 and not has_pos_neg(order[cut:], y_train, min_pos=20):
     cut = max(0, cut - step)
-    tr_idx = order[:cut]
-    va_idx = order[cut:]
-    pos_val = pos_counts(va_idx)
-    print(f"Allargo VAL: cut={cut}  train={len(tr_idx)}  val={len(va_idx)}  ·  Pos VAL:", pos_val.tolist())
 
-# 3) Top-up mirato (se ancora qualche classe è a zero): aggiungo ultime occorrenze positive
-missing = np.where(pos_val == 0)[0]
-if len(missing) > 0:
-    print("Top-up mirato per classi mancanti in VAL (aggiungo occorrenze recenti):", [ALL_ACTUATORS[i] for i in missing])
-    va_set = set(va_idx.tolist())
-    # per ogni classe mancante, prendi le ULTIME k occorrenze positive nel train intero
-    k_per_class = 500  # small cap per non sbilanciare troppo
-    for j in missing:
-        idx_j = np.where(y_train[:, j] == 1)[0]
-        if idx_j.size > 0:
-            extra = idx_j[-min(k_per_class, idx_j.size):]
-            va_set.update(extra.tolist())
-    va_idx = np.array(sorted(va_set), dtype=int)
-    # ricalcola train rimuovendo questi indici dalla train area
-    mask = np.ones(n, dtype=bool)
-    mask[va_idx] = False
-    tr_idx = np.arange(n, dtype=int)[mask]
-    pos_val = pos_counts(va_idx)
-    print("Positivi VAL dopo top-up:", pos_val.tolist())
-    print(f"Nuove dimensioni: train={len(tr_idx)}  val={len(va_idx)}")
+tr_idx, va_idx = order[:cut], order[cut:]
+print(f"Holdout: train={len(tr_idx)}  val={len(va_idx)}")
+print("Positivi VAL per classe:", y_train[va_idx].sum(0).astype(int).tolist())
 
-# 4) Safety: se ancora non c'è nessun positivo totale (caso limite), abort con messaggio chiaro
-if y_train[va_idx].sum() == 0:
-    raise SystemExit("❌ Validazione senza positivi totali. Verifica i periodi o la costruzione delle sequenze.")
-
-# Train/Val finali
 X_tr, X_va = X_train[tr_idx], X_train[va_idx]
 y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
+pos_rate = y_tr.mean(axis=0)
+pos_w = ((1.0 - pos_rate) / (pos_rate + 1e-6)).clip(1.0, 20.0).astype(np.float32)
+sample_w_tr = (1.0 + y_tr * (pos_w - 1.0)).astype(np.float32)  # shape [N,C]
+
+print("Train pos rate per classe:", np.round(pos_rate, 4).tolist())
+print("Pesi positivi:", np.round(pos_w, 2).tolist())
+
 model = build_lstm_model(input_shape, output_dim)
-es  = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
-rlr = keras.callbacks.ReduceLROnPlateau(monitor="val_recall", mode="max", factor=0.5, patience=2, min_lr=1e-5)
+es1 = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
+es2 = keras.callbacks.EarlyStopping(monitor="val_loss",  mode="min", patience=3, restore_best_weights=True)
+rlr = keras.callbacks.ReduceLROnPlateau(monitor="val_loss",  mode="min", factor=0.5, patience=2, min_lr=1e-5)
 
 history = model.fit(
     X_tr, y_tr,
     epochs=EPOCHS_MAX,
     batch_size=BATCH_SIZE,
     validation_data=(X_va, y_va),
-    callbacks=[es, rlr],
+    sample_weight=sample_w_tr,   # <— aggiungi questo
+    callbacks=[es1, es2, rlr],
     verbose=1
 )
 
@@ -329,6 +310,9 @@ history = model.fit(
 histories = [history]
 y_val_all = y_va
 y_pred_probs_all = model.predict(X_va, verbose=0)
+
+plot_mean_learning_curve(histories, "loss", save_path=SAVE_DIR / "learning_curve_loss.png")
+plot_mean_learning_curve(histories, "precision", save_path=SAVE_DIR / "learning_curve_precision.png")
 
 # --- grafici invariati ma con guard per classi costanti ---
 plt.figure(figsize=(9, 7))
@@ -359,9 +343,30 @@ plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "precision_recall_aggregated.png", bbox_inches="tight")
 plt.close()
 
-optimal_thresholds = compute_optimal_thresholds(y_val_all, y_pred_probs_all, ALL_ACTUATORS)
-thr_vec = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
+from sklearn.metrics import precision_recall_curve
+
+# target di precisione per classe (puoi tarare questi numeri)
+# ordine: [Umidificatore, Finestra, Deumidificatore, Riscaldamento, Clima]
+prec_target = [0.60, 0.70, 0.60, 0.60, 0.75]
+
+thresholds = {}
+for j, act in enumerate(ALL_ACTUATORS):
+    yj = y_va[:, j]
+    pj = model.predict(X_va, verbose=0)[:, j]  # oppure usa y_pred_probs_all[:, j] se lo hai già
+    pr, rc, th = precision_recall_curve(yj, pj)
+    if len(th) == 0:
+        thresholds[act] = 0.5
+        continue
+    # trova la prima soglia che raggiunge la precisione target (o la massima precisione disponibile)
+    idx = np.where(pr[:-1] >= prec_target[j])[0]
+    best = th[idx[0]] if len(idx) else th[np.argmax(pr[:-1])]
+    thresholds[act] = float(best)
+
+thr_vec = np.array([thresholds[a] for a in ALL_ACTUATORS])[None, :]
+y_pred_probs_all = model.predict(X_va, verbose=0)
 y_pred_all_opt = (y_pred_probs_all > thr_vec).astype(int)
+
+print("Soglie per precisione target:", thresholds)
 
 print("\n--- Report di Classificazione (validazione holdout) ---")
 for j, act in enumerate(ALL_ACTUATORS):
@@ -374,25 +379,12 @@ print(f"\nExact Match Ratio (EMR - validazione): {emr:.4f}")
 print("\n✅ [SEZIONE 6] Valutazione holdout completata.")
 
 # ==============================================================================
-# SEZIONE 7 — ADD. FINALE SU TUTTO IL TRAIN & TEST REPORT
+# SEZIONE 7 — TEST CON MODELLO EARLY-STOPPED (NO RETRAIN)
 # ==============================================================================
-print("\n--- [SEZIONE 7] Addestramento Finale e Test ---")
-
-# Epoche medie dalle curve (fallback >=5)
-avg_epochs = int(np.mean([len(h.history.get("loss", [])) for h in histories if h.history.get("loss")]))
-avg_epochs = max(avg_epochs, 5)
-print(f"Addestramento finale per {avg_epochs} epoche...")
-
-final_model = build_lstm_model(input_shape, output_dim)
-final_model.fit(
-    X_train, y_train,
-    epochs=avg_epochs,
-    batch_size=BATCH_SIZE,
-    verbose=0
-)
+print("\n--- [SEZIONE 7] Test con modello early-stopped (niente retrain) ---")
 
 # Inference sul test
-test_probs = final_model.predict(X_test, verbose=0)
+test_probs = model.predict(X_test, verbose=0)
 
 # Applica soglie F1 trovate in validazione
 thr_vec_test = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
@@ -414,7 +406,7 @@ print(f"\nExact Match Ratio (EMR - test): {emr_test:.4f}")
 print("\n--- [SEZIONE 8] Salvataggi ---")
 
 # Modello/scaler/feature/thresholds
-final_model.save(SAVE_DIR / "model_lstm.keras")
+model.save(SAVE_DIR / "model_lstm.keras")
 joblib.dump(scaler, SAVE_DIR / "scaler.joblib")
 
 with open(SAVE_DIR / "features.json", "w") as f:
@@ -430,7 +422,6 @@ metrics = {
     "stride_train": int(STRIDE),
     "batch_size": int(BATCH_SIZE),
     "lr": float(LR),
-    "epochs_final": int(avg_epochs),
 }
 with open(SAVE_DIR / "metrics.json", "w") as f:
     json.dump(metrics, f, indent=2)
