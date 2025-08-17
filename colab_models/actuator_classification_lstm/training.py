@@ -308,7 +308,7 @@ history = model.fit(
     batch_size=BATCH_SIZE,
     validation_data=(X_va, y_va),
     sample_weight=sample_w_tr,   # <— aggiungi questo
-    callbacks=[es1, es2, rlr],
+    callbacks=[es2, rlr],
     verbose=1
 )
 
