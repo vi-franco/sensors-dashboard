@@ -262,6 +262,25 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 folds = temporal_blocked_folds(t_train, n_splits=5)
 folds = rebalance_folds_by_class(folds, y_train, min_pos=1)
 
+if not folds:
+    base_folds = temporal_blocked_folds(t_train, n_splits=5)
+    folds = [(tr, va) for (tr, va) in base_folds if y_train[va].sum() > 0]
+
+if not folds:
+    order = np.argsort(t_train)
+    n = len(order)
+    cut = int(n * 0.85)
+    tr, va = order[:cut], order[cut:]
+    if y_train[va].sum() == 0:  # all 0 in val? all 1?
+        cut = int(n * 0.70)
+        tr, va = order[:cut], order[cut:]
+    folds = [(tr, va)]
+    print("⚠️ Nessun fold valido — uso holdout time-based 85/15 (eventuale 70/30).")
+
+# Debug: mostra quanti positivi per classe in ciascun fold di VAL
+for i, (_, va) in enumerate(folds, 1):
+    print(f"Fold {i} - positivi VAL per classe:", y_train[va].sum(0).astype(int).tolist())
+
 histories = []
 val_probs_all = []
 val_true_all = []
@@ -288,6 +307,9 @@ for i, (tr_idx, va_idx) in enumerate(folds, 1):
     preds = model.predict(X_va, verbose=0)
     val_probs_all.append(preds)
     val_true_all.append(y_va)
+
+if not val_true_all:
+    raise SystemExit("❌ Nessuna validazione eseguita (fold vuoti). Controlla i log dei fold sopra.")
 
 # Aggrego i risultati di validazione
 y_val_all = np.concatenate(val_true_all, axis=0)
