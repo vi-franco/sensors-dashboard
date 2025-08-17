@@ -51,8 +51,8 @@ ALL_ACTUATORS = get_actuator_names()
 STATE_COLS = [f"state_{a}" for a in ALL_ACTUATORS]
 
 # Config sequenze
-WINDOW = 60
-STRIDE = 2
+WINDOW = 30
+STRIDE = 3
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 

@@ -123,7 +123,7 @@ def final_features_actuator_classification() -> list:
         "dewpoint_diff_in_out_std_60m",
     ]
 
-def final_features_actuator_classification() -> list:
+def final_features_actuator_classification_lstm() -> list:
     return [
         # Base
         "temperature_sensor","absolute_humidity_sensor","co2","voc",
