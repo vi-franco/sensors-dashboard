@@ -164,7 +164,7 @@ def build_lstm_model(input_shape, output_dim):
     inp = keras.Input(shape=input_shape)
     x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)  # <-- layers.*
     x = layers.ReLU()(x)                                      # <-- layers.*
-    x = layers.GRU(48, 0.3)(x)                                # <-- layers.*
+    x = layers.GRU(48, dropout=0.3)(x)                                # <-- layers.*
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
