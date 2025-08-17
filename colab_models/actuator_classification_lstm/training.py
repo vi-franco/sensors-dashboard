@@ -52,7 +52,7 @@ STATE_COLS = [f"state_{a}" for a in ALL_ACTUATORS]
 
 # Config sequenze
 WINDOW = 30
-STRIDE = 3
+STRIDE = 2
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
