@@ -123,6 +123,30 @@ def final_features_actuator_classification() -> list:
         "dewpoint_diff_in_out_std_60m",
     ]
 
+def final_features_actuator_classification() -> list:
+    return [
+        # Base
+        "temperature_sensor","absolute_humidity_sensor","co2","voc",
+        "temperature_external","absolute_humidity_external",
+        "wind_speed","rain_1h",
+
+        # Gradienti/VPD/Interazioni
+        "temp_diff_in_out","ah_diff_in_out", "vpd_in","vpd_diff","temp_diff_x_wind",
+
+        # Tempo locale
+        "hour_sin","hour_cos","minutes_from_sunrise","minutes_to_sunset",
+
+        # Rolling 5m/30m interni
+        "temperature_sensor_trend_5m",
+        "absolute_humidity_sensor_trend_5m",
+        "co2_trend_5m",
+        "voc_trend_5m",
+
+        # Trend esterni
+        "temperature_external_trend_5m",
+        "absolute_humidity_external_trend_5m"
+    ]
+
 def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
     dt_local = pd.to_datetime(df["local_datetime"], errors="coerce")
     dt_utc = pd.to_datetime(df["utc_datetime"], errors="coerce", utc=True)

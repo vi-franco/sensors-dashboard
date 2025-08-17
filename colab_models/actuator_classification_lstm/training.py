@@ -25,7 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from utils.feature_engineering import (
     ensure_min_columns_actuator_classification,
     add_features_actuator_classification,
-    final_features_actuator_classification,
+    final_features_actuator_classification_lstm,
 )
 from colab_models.common import (
     load_unified_dataset,
@@ -206,7 +206,7 @@ print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
 # ==============================================================================
 print("\n--- [SEZIONE 4] Definizione Feature e Split ---")
 
-features = final_features_actuator_classification()
+features = final_features_actuator_classification_lstm()
 targets = STATE_COLS.copy()
 print(f"Features: {len(features)} · Targets: {len(targets)}")
 
