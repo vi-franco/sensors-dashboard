@@ -57,7 +57,7 @@ TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
 BATCH_SIZE = 128
-EPOCHS_MAX = 60
+EPOCHS_MAX = 30
 LR = 3e-4
 
 print("✅ [SEZIONE 0] Setup completato.")
@@ -150,12 +150,13 @@ def transform_with_scaler(df, feature_cols, scaler):
     return out
 
 
-def build_lstm_model(input_shape, output_dim, units=128, dropout=0.2, lr=3e-4):
+def build_lstm_model(input_shape, output_dim, units=64, dropout=0.2, lr=3e-4):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = layers.Masking()(inp)
-    x = layers.LSTM(units, dropout=dropout, recurrent_dropout=0.1)(x)
-    x = layers.Dense(64, activation="relu")(x)
+    x = layers.Conv1D(64, 3, strides=2, padding="same")(inp)
+    x = layers.ReLU()(x)
+    x = layers.GRU(units, dropout=dropout)(x)
+    x = layers.Dense(32, activation="relu")(x)
     out = layers.Dense(output_dim, activation="sigmoid")(x)
 
     model = keras.Model(inp, out)
@@ -261,8 +262,8 @@ for i, (tr_idx, va_idx) in enumerate(folds, 1):
     X_tr, X_va = X_train[tr_idx], X_train[va_idx]
     y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
-    model = build_lstm_model(input_shape, output_dim, units=128, dropout=0.2, lr=LR)
-    es = EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True, verbose=0)
+    model = build_lstm_model(input_shape, output_dim, units=64, dropout=0.2, lr=LR)
+    es = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=1)
     history = model.fit(
         X_tr, y_tr,
         epochs=EPOCHS_MAX,
