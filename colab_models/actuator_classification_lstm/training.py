@@ -162,13 +162,13 @@ def rebalance_folds_by_class(folds, y_all, min_pos=1):
 def build_lstm_model(input_shape, output_dim):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = keras.Conv1D(64, 5, strides=2, padding="same")(inp)
-    x = keras.ReLU()(x)
-    x = keras.GRU(48, 0.3)(x)  # prima 64, 0.2
+    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)  # <-- layers.*
+    x = layers.ReLU()(x)                                      # <-- layers.*
+    x = layers.GRU(48, 0.3)(x)                                # <-- layers.*
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
-        optimizer=keras.optimizers.Adam(2e-4),  # prima 3e-4
+        optimizer=keras.optimizers.Adam(2e-4),
         loss="binary_crossentropy",
         metrics=["binary_accuracy", "precision", "recall"]
     )
