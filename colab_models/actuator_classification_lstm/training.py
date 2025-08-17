@@ -159,16 +159,16 @@ def rebalance_folds_by_class(folds, y_all, min_pos=1):
         if ok: good.append((tr, va))
     return good
 
-def build_lstm_model(input_shape, output_dim, units=64, dropout=0.2, lr=3e-4):
+def build_lstm_model(input_shape, output_dim):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
     x = keras.Conv1D(64, 5, strides=2, padding="same")(inp)
     x = keras.ReLU()(x)
-    x = keras.GRU(64, dropout=0.2)(x)
+    x = keras.GRU(48, 0.3)(x)  # prima 64, 0.2
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
-        optimizer=keras.optimizers.Adam(lr),
+        optimizer=keras.optimizers.Adam(2e-4),  # prima 3e-4
         loss="binary_crossentropy",
         metrics=["binary_accuracy", "precision", "recall"]
     )
@@ -271,14 +271,16 @@ for i, (tr_idx, va_idx) in enumerate(folds, 1):
     X_tr, X_va = X_train[tr_idx], X_train[va_idx]
     y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
-    model = build_lstm_model(input_shape, output_dim, units=64, dropout=0.2, lr=LR)
-    es = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=0)
+    model = build_lstm_model(input_shape, output_dim)
+    es  = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
+    rlr = keras.callbacks.ReduceLROnPlateau(monitor="val_recall", mode="max", factor=0.5, patience=2, min_lr=1e-5)
+
     history = model.fit(
         X_tr, y_tr,
         epochs=EPOCHS_MAX,
         batch_size=BATCH_SIZE,
         validation_data=(X_va, y_va),
-        callbacks=[es],
+        callbacks=[es, rlr],
         verbose=1
     )
     histories.append(history)
@@ -344,7 +346,7 @@ avg_epochs = int(np.mean([len(h.history.get("loss", [])) for h in histories if h
 avg_epochs = max(avg_epochs, 5)
 print(f"Addestramento finale per {avg_epochs} epoche...")
 
-final_model = build_lstm_model(input_shape, output_dim, units=128, dropout=0.2, lr=LR)
+final_model = build_lstm_model(input_shape, output_dim)
 final_model.fit(
     X_train, y_train,
     epochs=avg_epochs,
