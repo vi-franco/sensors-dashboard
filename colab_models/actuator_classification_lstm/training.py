@@ -149,15 +149,22 @@ def transform_with_scaler(df, feature_cols, scaler):
     out.loc[:, feature_cols] = Xs
     return out
 
+def rebalance_folds_by_class(folds, y_all, min_pos=1):
+    good = []
+    for tr, va in folds:
+        ok = True
+        for i in range(y_all.shape[1]):
+            if y_all[va, i].sum() < min_pos:
+                ok = False; break
+        if ok: good.append((tr, va))
+    return good
 
 def build_lstm_model(input_shape, output_dim, units=64, dropout=0.2, lr=3e-4):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)   # 180→90
-    x = layers.ReLU()(x)
-    x = layers.Conv1D(64, 5, strides=2, padding="same")(x)     # 90→45
-    x = layers.ReLU()(x)
-    x = layers.GRU(48)(x)
+    x = keras.Conv1D(64, 5, strides=2, padding="same")(inp)
+    x = keras.ReLU()(x)
+    x = keras.GRU(64, dropout=0.2)(x)
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
@@ -253,6 +260,8 @@ print("\n--- [SEZIONE 6] Addestramento e Valutazione con Temporal CV ---")
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 
 folds = temporal_blocked_folds(t_train, n_splits=5)
+folds = rebalance_folds_by_class(folds, y_train, min_pos=1)
+
 histories = []
 val_probs_all = []
 val_true_all = []
