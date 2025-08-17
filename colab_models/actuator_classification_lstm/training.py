@@ -51,8 +51,8 @@ ALL_ACTUATORS = get_actuator_names()
 STATE_COLS = [f"state_{a}" for a in ALL_ACTUATORS]
 
 # Config sequenze
-WINDOW = 30
-STRIDE = 1
+WINDOW = 45
+STRIDE = 2
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
@@ -162,7 +162,7 @@ def rebalance_folds_by_class(folds, y_all, min_pos=1):
 def build_lstm_model(input_shape, output_dim):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)
+    x = layers.Conv1D(128, 5, strides=2, padding="same")(inp)
     x = layers.ReLU()(x)
     x = layers.GRU(64, dropout=0.2)(x)  # torna a 64/0.2: più stabile
     out = layers.Dense(output_dim, activation="sigmoid")(x)
@@ -393,7 +393,7 @@ print("\n--- [SEZIONE 7] Test con modello early-stopped (niente retrain) ---")
 test_probs = model.predict(X_test, verbose=0)
 
 # Applica soglie F1 trovate in validazione
-thr_vec_test = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
+thr_vec_test = np.array([thresholds[a] for a in ALL_ACTUATORS])[None, :]
 test_pred = (test_probs > thr_vec_test).astype(int)
 
 # Report test
@@ -419,7 +419,7 @@ with open(SAVE_DIR / "features.json", "w") as f:
     json.dump(features, f, indent=2)
 
 with open(SAVE_DIR / "thresholds.json", "w") as f:
-    json.dump({k: float(v) for k, v in optimal_thresholds.items()}, f, indent=2)
+    json.dump({k: float(v) for k, v in thresholds.items()}, f, indent=2)
 
 metrics = {
     "cv_emr": float(emr),
