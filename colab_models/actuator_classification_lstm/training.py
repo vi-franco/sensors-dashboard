@@ -254,77 +254,55 @@ print("✅ [SEZIONE 5] Sequenze pronte.")
 
 
 # ==============================================================================
-# SEZIONE 6 — ADD. & VALUTAZIONE (Temporal CV)
+# SEZIONE 6 — ADD. & VALUTAZIONE (Holdout temporale)
 # ==============================================================================
-print("\n--- [SEZIONE 6] Addestramento e Valutazione con Temporal CV ---")
+print("\n--- [SEZIONE 6] Addestramento e Valutazione con Holdout ---")
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 
-folds = temporal_blocked_folds(t_train, n_splits=5)
-folds = rebalance_folds_by_class(folds, y_train, min_pos=1)
+# Split temporale: 85% train, 15% val (fallback a 70/30 se la val non ha positivi)
+order = np.argsort(t_train)
+n = len(order)
+cut = int(n * 0.85)
+tr_idx, va_idx = order[:cut], order[cut:]
 
-if not folds:
-    base_folds = temporal_blocked_folds(t_train, n_splits=5)
-    folds = [(tr, va) for (tr, va) in base_folds if y_train[va].sum() > 0]
+# Se la validation non ha alcun positivo totale, allargala (70/30)
+if y_train[va_idx].sum() == 0:
+    cut = int(n * 0.70)
+    tr_idx, va_idx = order[:cut], order[cut:]
 
-if not folds:
-    order = np.argsort(t_train)
-    n = len(order)
-    cut = int(n * 0.85)
-    tr, va = order[:cut], order[cut:]
-    if y_train[va].sum() == 0:  # all 0 in val? all 1?
-        cut = int(n * 0.70)
-        tr, va = order[:cut], order[cut:]
-    folds = [(tr, va)]
-    print("⚠️ Nessun fold valido — uso holdout time-based 85/15 (eventuale 70/30).")
+print(f"Holdout: train={len(tr_idx)}  val={len(va_idx)}")
+print("Positivi VAL per classe:", y_train[va_idx].sum(0).astype(int).tolist())
 
-# Debug: mostra quanti positivi per classe in ciascun fold di VAL
-for i, (_, va) in enumerate(folds, 1):
-    print(f"Fold {i} - positivi VAL per classe:", y_train[va].sum(0).astype(int).tolist())
+X_tr, X_va = X_train[tr_idx], X_train[va_idx]
+y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
-histories = []
-val_probs_all = []
-val_true_all = []
+model = build_lstm_model(input_shape, output_dim)
+es  = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
+rlr = keras.callbacks.ReduceLROnPlateau(monitor="val_recall", mode="max", factor=0.5, patience=2, min_lr=1e-5)
 
-for i, (tr_idx, va_idx) in enumerate(folds, 1):
-    print(f"---------------- Fold {i}/{len(folds)} ----------------")
-    X_tr, X_va = X_train[tr_idx], X_train[va_idx]
-    y_tr, y_va = y_train[tr_idx], y_train[va_idx]
+history = model.fit(
+    X_tr, y_tr,
+    epochs=EPOCHS_MAX,
+    batch_size=BATCH_SIZE,
+    validation_data=(X_va, y_va),
+    callbacks=[es, rlr],
+    verbose=1
+)
 
-    model = build_lstm_model(input_shape, output_dim)
-    es  = keras.callbacks.EarlyStopping(monitor="val_recall", mode="max", patience=3, restore_best_weights=True)
-    rlr = keras.callbacks.ReduceLROnPlateau(monitor="val_recall", mode="max", factor=0.5, patience=2, min_lr=1e-5)
-
-    history = model.fit(
-        X_tr, y_tr,
-        epochs=EPOCHS_MAX,
-        batch_size=BATCH_SIZE,
-        validation_data=(X_va, y_va),
-        callbacks=[es, rlr],
-        verbose=1
-    )
-    histories.append(history)
-
-    preds = model.predict(X_va, verbose=0)
-    val_probs_all.append(preds)
-    val_true_all.append(y_va)
-
-if not val_true_all:
-    raise SystemExit("❌ Nessuna validazione eseguita (fold vuoti). Controlla i log dei fold sopra.")
-
-# Aggrego i risultati di validazione
-y_val_all = np.concatenate(val_true_all, axis=0)
-y_pred_probs_all = np.concatenate(val_probs_all, axis=0)
+# per riusare il resto dello script senza altre modifiche:
+histories = [history]
+y_val_all = y_va
+y_pred_probs_all = model.predict(X_va, verbose=0)
 
 # Curve apprendimento medie
 plot_mean_learning_curve(histories, "loss", save_path=SAVE_DIR / "learning_curve_loss.png")
 plot_mean_learning_curve(histories, "precision", save_path=SAVE_DIR / "learning_curve_precision.png")
 
-# ROC aggregata
+# ROC aggregata (skippa classi costanti in val)
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
-    yj = y_val_all[:, j]
-    pj = y_pred_probs_all[:, j]
-    if yj.max() == yj.min():  # tutti 0 o tutti 1 → ROC non definita
+    yj = y_val_all[:, j]; pj = y_pred_probs_all[:, j]
+    if yj.max() == yj.min():
         print(f"ROC: salto {act} (classe costante in validazione).")
         continue
     fpr, tpr, _ = roc_curve(yj, pj)
@@ -335,12 +313,11 @@ plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "roc_curve_aggregated.png", bbox_inches="tight")
 plt.close()
 
-# PR aggregata
+# PR aggregata (skippa classi costanti)
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
-    yj = y_val_all[:, j]
-    pj = y_pred_probs_all[:, j]
-    if yj.max() == yj.min():  # PR-AUC non informativa se classe costante
+    yj = y_val_all[:, j]; pj = y_pred_probs_all[:, j]
+    if yj.max() == yj.min():
         print(f"PR: salto {act} (classe costante in validazione).")
         continue
     pr, rc, _ = precision_recall_curve(yj, pj)
@@ -351,13 +328,12 @@ plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "precision_recall_aggregated.png", bbox_inches="tight")
 plt.close()
 
-# Soglie attuatore-specifiche per F1
+# Soglie F1 per attuatore
 optimal_thresholds = compute_optimal_thresholds(y_val_all, y_pred_probs_all, ALL_ACTUATORS)
 thr_vec = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
 y_pred_all_opt = (y_pred_probs_all > thr_vec).astype(int)
 
-# Report per attuatore
-print("\n--- Report di Classificazione (validazione aggregata) ---")
+print("\n--- Report di Classificazione (validazione holdout) ---")
 for j, act in enumerate(ALL_ACTUATORS):
     print(f"\n[{act}]")
     print(classification_report(y_val_all[:, j], y_pred_all_opt[:, j], digits=4, zero_division=0))
@@ -365,8 +341,7 @@ for j, act in enumerate(ALL_ACTUATORS):
 emr = np.all(y_val_all == y_pred_all_opt, axis=1).mean()
 print(f"\nExact Match Ratio (EMR - validazione): {emr:.4f}")
 
-print("\n✅ [SEZIONE 6] Valutazione CV completata.")
-
+print("\n✅ [SEZIONE 6] Valutazione holdout completata.")
 
 # ==============================================================================
 # SEZIONE 7 — ADD. FINALE SU TUTTO IL TRAIN & TEST REPORT
