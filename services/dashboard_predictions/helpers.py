@@ -87,7 +87,7 @@ def get_sensor_history(device_id: str, status: dict[str, Any]) -> tuple[pd.DataF
             status.update({'message': 'Nessun dato recente trovato su InfluxDB.', 'level': 2})
             return None, status
 
-        df['utc_datetime'] = pd.to_datetime(df['time'])
+        df['utc_datetime'] = pd.to_datetime(df['time'], utc=True, errors='coerce')
         df = df.set_index('utc_datetime').sort_index()
 
         expected_numeric = ['temperature', 'humidity', 'co2', 'voc']
