@@ -162,14 +162,14 @@ def rebalance_folds_by_class(folds, y_all, min_pos=1):
 def build_lstm_model(input_shape, output_dim):
     """Crea un modello LSTM semplice per classificazione multi-label."""
     inp = keras.Input(shape=input_shape)
-    x = layers.Conv1D(128, 5, strides=2, padding="same")(inp)
+    x = layers.Conv1D(64, 5, strides=2, padding="same")(inp)
     x = layers.ReLU()(x)
-    x = layers.GRU(64, dropout=0.2)(x)  # torna a 64/0.2: più stabile
+    x = layers.GRU(64, dropout=0.2)(x)  # numeri semplici e stabili
     out = layers.Dense(output_dim, activation="sigmoid")(x)
     model = keras.Model(inp, out)
     model.compile(
-        optimizer=keras.optimizers.Adam(3e-4, clipnorm=1.0),  # <— clipnorm
-        loss="binary_crossentropy",
+        optimizer=keras.optimizers.Adam(3e-4, clipnorm=1.0),             # <- clipnorm stabilizza
+        loss=keras.losses.BinaryFocalCrossentropy(gamma=2.0),            # <- focal per sbilanciamento
         metrics=["binary_accuracy", "precision", "recall"]
     )
     return model
@@ -261,20 +261,16 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_prec
 
 order = np.argsort(t_train)
 n = len(order)
-
-# Holdout iniziale 85/15
 cut = int(n * 0.85)
 
-def has_pos_neg(idx, y, min_pos=20):
-    # almeno min_pos positivi e almeno 1 negativo per ogni classe
+def ok_val(idx, y, min_pos=20):
     yv = y[idx]
     pos = yv.sum(axis=0)
     neg = (len(yv) - pos)
     return (pos >= min_pos).all() and (neg >= 1).all()
 
-# allarga finché tutte le classi hanno abbastanza esempi
 step = int(n * 0.05)
-while cut > 0 and not has_pos_neg(order[cut:], y_train, min_pos=20):
+while cut > 0 and not ok_val(order[cut:], y_train, min_pos=20):
     cut = max(0, cut - step)
 
 tr_idx, va_idx = order[:cut], order[cut:]
