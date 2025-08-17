@@ -11,6 +11,8 @@ import joblib
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.callbacks import EarlyStopping
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras import layers
 
 import sys
 import os
@@ -31,12 +33,8 @@ from colab_models.common import (
     get_actuator_names,
 )
 
-# Helpers LSTM (quelli minimal che ti ho passato)
-from helpers.lstm_helpers import (
-    fit_scaler,
-    transform_with_scaler,
+from from utils.feature_engineering import (
     build_sequences,
-    build_lstm_model,
 )
 
 # --- Paths & costanti
@@ -135,6 +133,38 @@ def compute_optimal_thresholds(y_true, y_prob, actuator_names):
             thresholds[act] = float(th[np.argmax(f1)])
     return thresholds
 
+
+def fit_scaler(train_df, feature_cols):
+    """Fit dello StandardScaler solo sul training set."""
+    X = train_df[feature_cols].astype(float).fillna(0)
+    scaler = StandardScaler()
+    scaler.fit(X.values)
+    return scaler
+
+def transform_with_scaler(df, feature_cols, scaler):
+    """Applica lo scaler a un DataFrame e restituisce una copia scalata."""
+    X = df[feature_cols].astype(float).fillna(0)
+    Xs = scaler.transform(X.values)
+    out = df.copy()
+    out.loc[:, feature_cols] = Xs
+    return out
+
+
+def build_lstm_model(input_shape, output_dim, units=128, dropout=0.2, lr=3e-4):
+    """Crea un modello LSTM semplice per classificazione multi-label."""
+    inp = keras.Input(shape=input_shape)
+    x = layers.Masking()(inp)
+    x = layers.LSTM(units, dropout=dropout, recurrent_dropout=0.1)(x)
+    x = layers.Dense(64, activation="relu")(x)
+    out = layers.Dense(output_dim, activation="sigmoid")(x)
+
+    model = keras.Model(inp, out)
+    model.compile(
+        optimizer=keras.optimizers.Adam(lr),
+        loss="binary_crossentropy",
+        metrics=["binary_accuracy", "precision", "recall"]
+    )
+    return model
 
 print("✅ [SEZIONE 1] Funzioni analisi pronte.")
 

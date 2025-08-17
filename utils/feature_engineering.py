@@ -209,3 +209,38 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
     df["ah_drop_flag_5m"]   = drop_flag("absolute_humidity_sensor")
     df["ah_rise_flag_5m"]   = rise_flag("absolute_humidity_sensor")
     return df
+
+def build_sequences(df, feature_cols, target_cols, window=180, stride=1, time_col="utc_datetime", group_cols=("device", "period_id")):
+    """
+    Genera finestre causali di lunghezza `window`.
+    Ogni finestra: [t-window+1 ... t] -> target a t.
+    Ritorna:
+        X: array [N, window, F]
+        y: array [N, C]
+        times: array con i timestamp finali di ogni finestra
+    """
+    if any(c not in df.columns for c in feature_cols + target_cols):
+        raise ValueError("Mancano alcune colonne richieste")
+
+    X_list, y_list, t_list = [], [], []
+
+    df = df.sort_values(list(group_cols) + [time_col]).reset_index(drop=True)
+
+    for _, g in df.groupby(list(group_cols), sort=False):
+        if len(g) < window:
+            continue
+
+        F = g[feature_cols].astype(float).values
+        Y = g[target_cols].astype(int).values
+        times = pd.to_datetime(g[time_col]).values
+
+        for end in range(window - 1, len(g), stride):
+            start = end - window + 1
+            X_list.append(F[start:end+1])
+            y_list.append(Y[end])
+            t_list.append(times[end])
+
+    if not X_list:
+        raise ValueError("Nessuna finestra creata, controlla window/stride.")
+
+    return np.array(X_list), np.array(y_list), np.array(t_list)
