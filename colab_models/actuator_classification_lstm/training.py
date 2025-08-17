@@ -51,8 +51,8 @@ ALL_ACTUATORS = get_actuator_names()
 STATE_COLS = [f"state_{a}" for a in ALL_ACTUATORS]
 
 # Config sequenze
-WINDOW = 180       # 3 ore a 1-min cadence
-STRIDE = 2         # velocizza (puoi rimettere 1 se vuoi massimizzare i campioni)
+WINDOW = 60
+STRIDE = 2
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
@@ -143,8 +143,8 @@ def fit_scaler(train_df, feature_cols):
 
 def transform_with_scaler(df, feature_cols, scaler):
     """Applica lo scaler a un DataFrame e restituisce una copia scalata."""
-    X = df[feature_cols].astype(float).fillna(0)
-    Xs = scaler.transform(X.values)
+    X = df[feature_cols].astype(np.float32).fillna(0)   # <- float32
+    Xs = scaler.transform(X.values).astype(np.float32)  # <- float32
     out = df.copy()
     out.loc[:, feature_cols] = Xs
     return out

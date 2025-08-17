@@ -230,8 +230,8 @@ def build_sequences(df, feature_cols, target_cols, window=180, stride=1, time_co
         if len(g) < window:
             continue
 
-        F = g[feature_cols].astype(float).values
-        Y = g[target_cols].astype(int).values
+        F = g[feature_cols].to_numpy(dtype=np.float32, copy=False)
+        Y = g[target_cols].to_numpy(dtype=np.int8,   copy=False)
         times = pd.to_datetime(g[time_col]).values
 
         for end in range(window - 1, len(g), stride):
@@ -243,4 +243,6 @@ def build_sequences(df, feature_cols, target_cols, window=180, stride=1, time_co
     if not X_list:
         raise ValueError("Nessuna finestra creata, controlla window/stride.")
 
-    return np.array(X_list), np.array(y_list), np.array(t_list)
+    return (np.asarray(X_list, dtype=np.float32),
+                np.asarray(y_list, dtype=np.int8),
+                np.asarray(t_list))
