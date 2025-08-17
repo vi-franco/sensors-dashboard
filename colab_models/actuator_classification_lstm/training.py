@@ -52,7 +52,7 @@ STATE_COLS = [f"state_{a}" for a in ALL_ACTUATORS]
 
 # Config sequenze
 WINDOW = 30
-STRIDE = 2
+STRIDE = 1
 TIME_COL = "utc_datetime"
 GROUP_COLS = ("device", "period_id")
 
@@ -254,25 +254,61 @@ print("✅ [SEZIONE 5] Sequenze pronte.")
 
 
 # ==============================================================================
-# SEZIONE 6 — ADD. & VALUTAZIONE (Holdout temporale)
+# SEZIONE 6 — ADD. & VALUTAZIONE (Holdout temporale robusto)
 # ==============================================================================
 print("\n--- [SEZIONE 6] Addestramento e Valutazione con Holdout ---")
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 
-# Split temporale: 85% train, 15% val (fallback a 70/30 se la val non ha positivi)
 order = np.argsort(t_train)
 n = len(order)
+
+# 1) Holdout iniziale 85/15
 cut = int(n * 0.85)
-tr_idx, va_idx = order[:cut], order[cut:]
+tr_idx = order[:cut]
+va_idx = order[cut:]
 
-# Se la validation non ha alcun positivo totale, allargala (70/30)
+def pos_counts(idx):
+    return y_train[idx].sum(axis=0).astype(int)
+
+pos_val = pos_counts(va_idx)
+print(f"Holdout iniziale: train={len(tr_idx)}  val={len(va_idx)}")
+print("Positivi VAL per classe:", pos_val.tolist())
+
+# 2) Se mancano classi in VAL, allarga la validazione spostando il cut indietro a step del 5%
+step = int(n * 0.05)
+while (pos_val == 0).any() and cut > 0:
+    cut = max(0, cut - step)
+    tr_idx = order[:cut]
+    va_idx = order[cut:]
+    pos_val = pos_counts(va_idx)
+    print(f"Allargo VAL: cut={cut}  train={len(tr_idx)}  val={len(va_idx)}  ·  Pos VAL:", pos_val.tolist())
+
+# 3) Top-up mirato (se ancora qualche classe è a zero): aggiungo ultime occorrenze positive
+missing = np.where(pos_val == 0)[0]
+if len(missing) > 0:
+    print("Top-up mirato per classi mancanti in VAL (aggiungo occorrenze recenti):", [ALL_ACTUATORS[i] for i in missing])
+    va_set = set(va_idx.tolist())
+    # per ogni classe mancante, prendi le ULTIME k occorrenze positive nel train intero
+    k_per_class = 500  # small cap per non sbilanciare troppo
+    for j in missing:
+        idx_j = np.where(y_train[:, j] == 1)[0]
+        if idx_j.size > 0:
+            extra = idx_j[-min(k_per_class, idx_j.size):]
+            va_set.update(extra.tolist())
+    va_idx = np.array(sorted(va_set), dtype=int)
+    # ricalcola train rimuovendo questi indici dalla train area
+    mask = np.ones(n, dtype=bool)
+    mask[va_idx] = False
+    tr_idx = np.arange(n, dtype=int)[mask]
+    pos_val = pos_counts(va_idx)
+    print("Positivi VAL dopo top-up:", pos_val.tolist())
+    print(f"Nuove dimensioni: train={len(tr_idx)}  val={len(va_idx)}")
+
+# 4) Safety: se ancora non c'è nessun positivo totale (caso limite), abort con messaggio chiaro
 if y_train[va_idx].sum() == 0:
-    cut = int(n * 0.70)
-    tr_idx, va_idx = order[:cut], order[cut:]
+    raise SystemExit("❌ Validazione senza positivi totali. Verifica i periodi o la costruzione delle sequenze.")
 
-print(f"Holdout: train={len(tr_idx)}  val={len(va_idx)}")
-print("Positivi VAL per classe:", y_train[va_idx].sum(0).astype(int).tolist())
-
+# Train/Val finali
 X_tr, X_va = X_train[tr_idx], X_train[va_idx]
 y_tr, y_va = y_train[tr_idx], y_train[va_idx]
 
@@ -289,16 +325,12 @@ history = model.fit(
     verbose=1
 )
 
-# per riusare il resto dello script senza altre modifiche:
+# per riusare il resto invariato
 histories = [history]
 y_val_all = y_va
 y_pred_probs_all = model.predict(X_va, verbose=0)
 
-# Curve apprendimento medie
-plot_mean_learning_curve(histories, "loss", save_path=SAVE_DIR / "learning_curve_loss.png")
-plot_mean_learning_curve(histories, "precision", save_path=SAVE_DIR / "learning_curve_precision.png")
-
-# ROC aggregata (skippa classi costanti in val)
+# --- grafici invariati ma con guard per classi costanti ---
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
     yj = y_val_all[:, j]; pj = y_pred_probs_all[:, j]
@@ -313,7 +345,6 @@ plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "roc_curve_aggregated.png", bbox_inches="tight")
 plt.close()
 
-# PR aggregata (skippa classi costanti)
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
     yj = y_val_all[:, j]; pj = y_pred_probs_all[:, j]
@@ -328,7 +359,6 @@ plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "precision_recall_aggregated.png", bbox_inches="tight")
 plt.close()
 
-# Soglie F1 per attuatore
 optimal_thresholds = compute_optimal_thresholds(y_val_all, y_pred_probs_all, ALL_ACTUATORS)
 thr_vec = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
 y_pred_all_opt = (y_pred_probs_all > thr_vec).astype(int)
