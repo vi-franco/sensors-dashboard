@@ -322,7 +322,12 @@ plot_mean_learning_curve(histories, "precision", save_path=SAVE_DIR / "learning_
 # ROC aggregata
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
-    fpr, tpr, _ = roc_curve(y_val_all[:, j], y_pred_probs_all[:, j])
+    yj = y_val_all[:, j]
+    pj = y_pred_probs_all[:, j]
+    if yj.max() == yj.min():  # tutti 0 o tutti 1 → ROC non definita
+        print(f"ROC: salto {act} (classe costante in validazione).")
+        continue
+    fpr, tpr, _ = roc_curve(yj, pj)
     plt.plot(fpr, tpr, label=f"{act} (AUC={auc(fpr, tpr):.3f})")
 plt.plot([0, 1], [0, 1], "k--")
 plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("Curva ROC Aggregata (Validazione)")
@@ -333,8 +338,13 @@ plt.close()
 # PR aggregata
 plt.figure(figsize=(9, 7))
 for j, act in enumerate(ALL_ACTUATORS):
-    pr, rc, _ = precision_recall_curve(y_val_all[:, j], y_pred_probs_all[:, j])
-    ap = average_precision_score(y_val_all[:, j], y_pred_probs_all[:, j])
+    yj = y_val_all[:, j]
+    pj = y_pred_probs_all[:, j]
+    if yj.max() == yj.min():  # PR-AUC non informativa se classe costante
+        print(f"PR: salto {act} (classe costante in validazione).")
+        continue
+    pr, rc, _ = precision_recall_curve(yj, pj)
+    ap = average_precision_score(yj, pj)
     plt.plot(rc, pr, label=f"{act} (AP={ap:.3f})")
 plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title("Curva Precision-Recall Aggregata (Validazione)")
 plt.legend(); plt.grid(True)
