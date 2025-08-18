@@ -61,86 +61,62 @@ def log_actuator_stats(df: pd.DataFrame, STATE_COLS: list[str], name: str) -> No
 
 
 
-def augment_minority_periods_on_windows(
-    train_base: pd.DataFrame,
-    state_cols: List[str],
-    time_col: str = "utc_datetime",
+def duplicate_groups_with_noise(
+    df: pd.DataFrame,
+    n_duplicates: int,
     group_col: str = "period_id",
-    min_pos_rows_per_act: int = 5000,
-    context_minutes: int = 30,
-    noise_pct: float = 0.01,
+    noise_min: float = 0.005,
+    noise_max: float = 0.01,
     id_suffix: str = "AUG",
+    exclude_cols: Optional[List[str]] = None
 ) -> pd.DataFrame:
+    """
+    Separa un DataFrame per gruppi, li duplica N volte e aggiunge rumore
+    casuale alle colonne numeriche delle copie.
 
-    base = train_base.copy()
-    base[time_col] = pd.to_datetime(base[time_col], utc=True, errors="coerce")
+    Args:
+        df (pd.DataFrame): Il DataFrame di input.
+        n_duplicates (int): Il numero di volte che ogni gruppo deve essere duplicato.
+        group_col (str, optional): La colonna usata per raggruppare. Default: "period_id".
+        noise_min (float, optional): La percentuale minima di rumore (es. 0.005 per 0.5%).
+        noise_max (float, optional): La percentuale massima di rumore (es. 0.01 per 1%).
+        id_suffix (str, optional): Il suffisso per i nuovi ID. Default: "AUG".
+        exclude_cols (Optional[List[str]], optional): Lista di colonne da escludere
+                                                      dall'aggiunta di rumore.
 
-    # Colonne numeriche da perturbare (escludi target + id/tempo)
-    exclude = set(state_cols) | {time_col, group_col}
-    num_cols = [c for c in base.columns if c not in exclude and np.issubdtype(base[c].dtype, np.number)]
+    Returns:
+        pd.DataFrame: Un nuovo DataFrame con i gruppi duplicati e perturbati.
+    """
+    if n_duplicates <= 0:
+        return pd.DataFrame(columns=df.columns)
 
-    # Trova segmenti contigui ON per una colonna stato in un gruppo
-    def segments_on(g: pd.DataFrame, state_col: str):
-        g = g.sort_values(time_col)
-        on = g[state_col].astype(int).to_numpy()
-        if on.size == 0:
-            return []
-        d = np.diff(np.r_[0, on, 0])
-        starts = np.where(d == 1)[0]
-        ends   = np.where(d == -1)[0] - 1
-        return [(g.iloc[s][time_col], g.iloc[e][time_col]) for s, e in zip(starts, ends)]
+    if exclude_cols is None:
+        exclude_cols = []
 
-    augmented = []
-    acts = [c[6:] if c.startswith("state_") else c for c in state_cols]
+    cols_to_exclude_from_noise = set(exclude_cols) | {group_col}
 
-    for act in acts:
-        state_col = f"state_{act}"
-        pos_now = int(base[state_col].sum())
-        if pos_now >= min_pos_rows_per_act:
-            continue
+    numeric_cols = [
+        col for col in df.columns
+        if pd.api.types.is_numeric_dtype(df[col]) and col not in cols_to_exclude_from_noise
+    ]
 
-        # Colleziona segmenti ON (+/- contesto) disponibili
-        meta = []  # (pid, t0c, t1c, pos_in_seg)
-        for pid, g in base.groupby(group_col, sort=False):
-            for t0, t1 in segments_on(g, state_col):
-                t0c = t0 - timedelta(minutes=context_minutes)
-                t1c = t1 + timedelta(minutes=context_minutes)
-                seg = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)]
-                if seg.empty:
-                    continue
-                pos_in_seg = int(seg[state_col].sum())
-                if pos_in_seg == 0:
-                    continue
-                meta.append((pid, t0c, t1c, pos_in_seg))
+    augmented_dfs = []
+    for original_id, group_df in df.groupby(group_col):
+        for i in range(n_duplicates):
+            new_group = group_df.copy()
 
-        if not meta:
-            continue
+            for col in numeric_cols:
+                noise_size = len(new_group)
+                random_noise = np.random.uniform(noise_min, noise_max, size=noise_size)
+                random_sign = np.random.choice([-1, 1], size=noise_size)
+                factor = 1 + (random_noise * random_sign)
+                new_group[col] = new_group[col].astype(float) * factor
 
-        need = max(0, min_pos_rows_per_act - pos_now)
-        k = 0
-        while need > 0:
-            pid, t0c, t1c, pos_in_seg = meta[k % len(meta)]
-            g = base[base[group_col] == pid]
-            seg = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)].copy()
-            if seg.empty:
-                k += 1
-                continue
+            new_id = f"{original_id}_{id_suffix}__{i + 1}"
+            new_group[group_col] = new_id
+            augmented_dfs.append(new_group)
 
-            # Nuovo period_id per i duplicati
-            seg[group_col] = f"{pid}__{act}_{id_suffix}_{k}"
+    if not augmented_dfs:
+        return pd.DataFrame(columns=df.columns)
 
-            # Rumore ±noise_pct (moltiplicativo) sulle numeriche
-            if num_cols and noise_pct:
-                for c in num_cols:
-                    n = np.random.uniform(-noise_pct, noise_pct, size=len(seg))
-                    seg[c] = seg[c].astype(float) * (1.0 + n)
-
-            augmented.append(seg)
-            need -= pos_in_seg
-            k += 1
-
-    if not augmented:
-        return base.iloc[0:0].copy()  # DataFrame vuoto con stesse colonne
-
-    aug_df = pd.concat(augmented, ignore_index=True)
-    return aug_df.sort_values(time_col).reset_index(drop=True)
+    return pd.concat(augmented_dfs, ignore_index=True)
