@@ -50,6 +50,23 @@ if final_df.empty:
 
 print(final_df.head())
 
+train_base_raw = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
+N_MIN = 10000  #
+aug_df = augment_minority_periods_on_windows(
+    train_base=train_base_raw,
+    state_cols=STATE_COLS,
+    time_col="utc_datetime",
+    group_col="period_id",
+    min_pos_rows_per_act=N_MIN,
+    context_minutes=30,
+    noise_pct=0.01,
+    id_suffix="AUG",
+)
+if not aug_df.empty:
+    print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
+    # Concateniamo al dataset grezzo
+    final_df = pd.concat([final_df, aug_df], ignore_index=True)
+
 print("✅ [SEZIONE 2] Dati caricati.")
 
 # ==============================================================================
