@@ -21,7 +21,7 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
-from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names
+from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names, log_actuator_stats
 
 SAVE_DIR = Path(__file__).parent / "output"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -37,25 +37,6 @@ STATE_COLS = [f"state_{act}" for act in ALL_ACTUATORS]
 
 print("✅ [SEZIONE 0] Setup completato.")
 
-# ==============================================================================
-# SEZIONE 1 — FUNZIONI
-# ==============================================================================
-
-def log_actuator_stats(df: pd.DataFrame, name: str = "Dataset") -> None:
-    if df.empty or not set(STATE_COLS).issubset(df.columns):
-        print(f"\n--- Statistiche {name}: dataset vuoto/colonne mancanti ---")
-        return
-    print(f"\n--- Statistiche Attuatori per {name} ({len(df)} righe) ---")
-    all_off = df[STATE_COLS].eq(0).all(axis=1).sum()
-    any_on = df[STATE_COLS].eq(1).any(axis=1).sum()
-    print(f"  · Tutti OFF: {all_off} ({all_off/len(df):.2%})")
-    print(f"  · Almeno uno ON: {any_on} ({any_on/len(df):.2%})")
-    for c in STATE_COLS:
-        on = df[c].sum()
-        print(f"  · {c.replace('state_','')}: {on} ({on/len(df):.2%})")
-
-print("✅ [SEZIONE 1] Funzioni definite.")
-
 
 # ==============================================================================
 # SEZIONE 2 — CARICAMENTO DEL DATASET
@@ -67,16 +48,9 @@ final_df = load_unified_dataset(DATASET_COMPLETO_PATH)
 if final_df.empty:
     raise SystemExit("DataFrame vuoto. Interrompo.")
 
-final_df["utc_datetime"] = pd.to_datetime(final_df["utc_datetime"], errors="coerce", utc=True)
-final_df.dropna(subset=["utc_datetime", "device"], inplace=True)
-final_df.sort_values(["device", "period_id", "utc_datetime"], inplace=True)
-
-for col in STATE_COLS:
-    if col in final_df.columns:
-        final_df[col] = final_df[col].fillna(0).astype(int)
+print(final_df.head())
 
 print("✅ [SEZIONE 2] Dati caricati.")
-
 
 # ==============================================================================
 # SEZIONE 3 — FEATURE ENGINEERING (pulita e causale)
@@ -84,8 +58,8 @@ print("✅ [SEZIONE 2] Dati caricati.")
 
 print("\n--- [SEZIONE 3] Feature Engineering ---")
 
-ensure_min_columns_actuator_classification(final_df)
 df = add_features_actuator_classification(final_df)
+print(df.head())
 
 print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
 
@@ -131,14 +105,12 @@ X_df = df_train[features]
 X_df = X_df.fillna(X_df.mean())
 y_df = df_train[targets].astype(int)
 
-N_SPLITS = 5
+N_SPLITS = 3
 kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
 
 def create_model(input_dim, output_dim):
     inp = Input(shape=(input_dim,))
-    x = Dense(64, activation="relu", kernel_regularizer=keras.regularizers.l2(5e-5))(inp)
-    x = Dropout(0.2)(x)
-    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-5))(x)
+    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(inp)
     x = Dropout(0.1)(x)
     x = Dense(16, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
     x = Dropout(0.1)(x)
@@ -164,8 +136,14 @@ for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
 
     model = create_model(X_tr_s.shape[1], y_tr.shape[1])
     es = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=0)
-    history = model.fit(X_tr_s, y_tr, epochs=20, batch_size=64,
-                        validation_data=(X_va_s, y_va), callbacks=[es], verbose=0)
+    history = model.fit(
+        X_tr_s,
+        y_tr,
+        epochs=20,
+        batch_size=64,
+        validation_data=(X_va_s, y_va),
+        callbacks=[es],
+        verbose=1)
     histories.append(history)
 
     preds = model.predict(X_va_s, verbose=0)
@@ -257,7 +235,7 @@ model_final = create_model(X_scaled_final.shape[1], y_df.shape[1])
 avg_epochs = int(np.mean([len(h.history.get("loss", [])) for h in histories if h.history.get("loss")]))
 avg_epochs = max(avg_epochs, 5)
 print(f"Addestramento finale per {avg_epochs} epoche...")
-model_final.fit(X_scaled_final, y_df, epochs=avg_epochs, batch_size=64, verbose=0)
+model_final.fit(X_scaled_final, y_df, epochs=avg_epochs, batch_size=128, verbose=1)
 
 model_final.save(SAVE_DIR / "model.keras")
 joblib.dump(scaler_final, SAVE_DIR / "scaler.joblib")

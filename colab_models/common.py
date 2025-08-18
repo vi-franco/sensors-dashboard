@@ -16,7 +16,12 @@ def load_unified_dataset(folder_path: Path) -> pd.DataFrame:
             frames.append(df_single)
         except Exception as e:
             print(f" -> Errore lettura {fp.name}: {e}")
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    final_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    final_df["utc_datetime"] = pd.to_datetime(final_df["utc_datetime"], errors="coerce", utc=True)
+    final_df.dropna(subset=["utc_datetime", "device"], inplace=True)
+    final_df.sort_values(["device", "period_id", "utc_datetime"], inplace=True)
+    return final_df
 
 
 def get_data_from_periods(df: pd.DataFrame, periods_file: Path) -> pd.DataFrame:
@@ -35,3 +40,17 @@ def get_data_from_periods(df: pd.DataFrame, periods_file: Path) -> pd.DataFrame:
 
 def get_actuator_names():
     return ["Umidificatore", "Finestra", "Deumidificatore", "Riscaldamento", "Clima"]
+
+
+def log_actuator_stats(df: pd.DataFrame, name: str = "Dataset") -> None:
+    if df.empty or not set(STATE_COLS).issubset(df.columns):
+        print(f"\n--- Statistiche {name}: dataset vuoto/colonne mancanti ---")
+        return
+    print(f"\n--- Statistiche Attuatori per {name} ({len(df)} righe) ---")
+    all_off = df[STATE_COLS].eq(0).all(axis=1).sum()
+    any_on = df[STATE_COLS].eq(1).any(axis=1).sum()
+    print(f"  · Tutti OFF: {all_off} ({all_off/len(df):.2%})")
+    print(f"  · Almeno uno ON: {any_on} ({any_on/len(df):.2%})")
+    for c in STATE_COLS:
+        on = df[c].sum()
+        print(f"  · {c.replace('state_','')}: {on} ({on/len(df):.2%})")
