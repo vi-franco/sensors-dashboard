@@ -170,8 +170,8 @@ for k in range(n_splits):
     is_original = ~groups.str.contains("__")
     val_groups = groups[is_original & base_ids.isin(val_bases)].values
 
-    tr_idx = df_train["period_id"].isin(train_groups).to_numpy().nonzero()[0]
-    va_idx = df_train["period_id"].isin(val_groups).to_numpy().nonzero()[0]
+    tr_idx = data_for_training["period_id"].isin(train_groups).to_numpy().nonzero()[0]
+    va_idx = data_for_training["period_id"].isin(val_groups).to_numpy().nonzero()[0]
     if len(tr_idx) == 0 or len(va_idx) == 0:
         print(f"[SKIP] Fold {k+1}: train={len(tr_idx)}, val={len(va_idx)}")
         continue
