@@ -88,147 +88,173 @@ log_actuator_stats(data_for_test, STATE_COLS, "Test Set")
 
 print("✅ [SEZIONE 4] OK.")
 
-# ==============================================================================
-# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (single split, no AUG in val)
-# ==============================================================================
-
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GroupKFold
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
-from tensorflow.keras import Input, Model
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-
 import tensorflow as tf
+from tensorflow.keras import Input, Model
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, Activation
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import keras
 
 def create_model(input_dim, output_dim):
+    """Crea e compila il modello Keras."""
     x_in = Input(shape=(input_dim,))
-    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
+    x = Dense(128, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
     x = BatchNormalization()(x)
-    x = tf.keras.layers.Activation("relu")(x)
-    x = Dropout(0.5)(x)
-    x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
+    x = Activation("relu")(x)
+    x = Dropout(0.4)(x)
+    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
     x = BatchNormalization()(x)
-    x = tf.keras.layers.Activation("relu")(x)
-    x = Dropout(0.3)(x)
+    x = Activation("relu")(x)
+    x = Dropout(0.4)(x)
+    x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
+    x = BatchNormalization()(x)
+    x = Activation("relu")(x)
+    x = Dropout(0.4)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
-    m.compile(optimizer=tf.keras.optimizers.Adam(2e-4),
+    m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
               loss="binary_crossentropy",
               metrics=["binary_accuracy", "precision", "recall"])
     return m
 
-if data_for_training.empty:
-    raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
-
-data_for_training = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
-X_df = data_for_training[features]
-y_df = data_for_training[targets].astype(int).values
-
-# base periods in ordine temporale (collassando AUG nella base)
-grp_start = data_for_training.groupby("period_id")["utc_datetime"].min().sort_values()
-groups = grp_start.index.to_series()
-base_ids = groups.str.split("__").str[0]
-order_df = (
-    grp_start.reset_index()
-    .assign(base=base_ids.values)
-    .groupby("base")["utc_datetime"].min()
-    .sort_values()
-    .reset_index()
-)
-base_order = order_df["base"].to_numpy()
-
-# single split: ultimi base_periods per validation
-val_ratio = 0.2
-n_val = max(1, int(len(base_order) * val_ratio))
-val_bases = base_order[-n_val:]
-train_bases = base_order[:-n_val]
-
-# escludo gruppi AUG dalla validation
-is_original = ~groups.str.contains("__")
-train_groups = groups[base_ids.isin(train_bases)].values                  # originali + AUG
-val_groups   = groups[is_original & base_ids.isin(val_bases)].values      # solo originali
-
-tr_idx = data_for_training["period_id"].isin(train_groups).to_numpy().nonzero()[0]
-va_idx = data_for_training["period_id"].isin(val_groups).to_numpy().nonzero()[0]
-print(f"Train rows: {len(tr_idx)} · Val rows: {len(va_idx)}")
-if len(tr_idx) == 0 or len(va_idx) == 0:
-    raise SystemExit("❌ Split vuoto: controlla i periodi disponibili.")
-
-X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
-y_tr, y_va = y_df[tr_idx], y_df[va_idx]
-
-imputer = SimpleImputer(strategy="mean")
-X_tr_imp = imputer.fit_transform(X_tr)
-X_va_imp = imputer.transform(X_va)
-
-scaler = StandardScaler()
-X_tr_s = scaler.fit_transform(X_tr_imp)
-X_va_s = scaler.transform(X_va_imp)
-
-model = create_model(X_tr_s.shape[1], y_tr.shape[1])
-es = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, verbose=1)
-rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-5, verbose=1)
-
-history = model.fit(
-    X_tr_s, y_tr,
-    validation_data=(X_va_s, y_va),
-    epochs=50,
-    batch_size=512,
-    verbose=1,
-    callbacks=[es, rlr],
-)
-
-y_pred_probs = model.predict(X_va_s, verbose=0)
-
-def plot_learning_curve(hist, metric, path):
-    tr = hist.history.get(metric, [])
-    va = hist.history.get(f"val_{metric}", [])
-    if not tr or not va:
-        return
-    epochs = range(1, min(len(tr), len(va)) + 1)
-    plt.figure(figsize=(8,5))
-    plt.plot(epochs, tr[:len(epochs)], "o-", label=f"Train {metric}")
-    plt.plot(epochs, va[:len(epochs)], "o-", label=f"Val {metric}")
-    plt.title(f"Curva Apprendimento: {metric}")
+def plot_avg_learning_curve(histories, metric, path):
+    """Plotta la media e la deviazione standard di una metrica su più fold."""
+    train_metrics = [h.history.get(metric, []) for h in histories]
+    val_metrics = [h.history.get(f"val_{metric}", []) for h in histories]
+    if not any(train_metrics) or not any(val_metrics): return
+    max_epochs = max(len(m) for m in train_metrics + val_metrics if m)
+    def pad_metric(metrics, max_len):
+        padded = np.full((len(metrics), max_len), np.nan)
+        for i, m in enumerate(metrics): padded[i, :len(m)] = m
+        return padded
+    train_padded = pad_metric(train_metrics, max_epochs)
+    val_padded = pad_metric(val_metrics, max_epochs)
+    mean_train, std_train = np.nanmean(train_padded, axis=0), np.nanstd(train_padded, axis=0)
+    mean_val, std_val = np.nanmean(val_padded, axis=0), np.nanstd(val_padded, axis=0)
+    epochs = range(1, max_epochs + 1)
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, mean_train, "o-", color="blue", label=f"Train {metric} (Media)")
+    plt.fill_between(epochs, mean_train - std_train, mean_train + std_train, color="blue", alpha=0.1)
+    plt.plot(epochs, mean_val, "o-", color="orange", label=f"Val {metric} (Media)")
+    plt.fill_between(epochs, mean_val - std_val, mean_val + std_val, color="orange", alpha=0.1)
+    plt.title(f"Curva Apprendimento Media ({len(histories)} Folds): {metric}")
     plt.xlabel("Epoca"); plt.ylabel(metric.capitalize()); plt.legend(); plt.grid(True)
     plt.savefig(path)
     plt.show()
 
-plot_learning_curve(history, "loss", SAVE_DIR / "learning_curve_loss.png")
-plot_learning_curve(history, "precision", SAVE_DIR / "learning_curve_precision.png")
+# --------------------------------------------------------------------------
+# 1. PREPARAZIONE DATI PER LA CROSS-VALIDATION
+# --------------------------------------------------------------------------
+print("✅ [SEZIONE 5] Inizio Addestramento e Validazione...")
 
-# --- Plot: ROC ---
+data_for_training = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
+
+is_original = ~data_for_training["period_id"].str.contains("__")
+data_original = data_for_training[is_original].copy()
+
+if data_original.empty:
+    raise SystemExit("❌ Non sono stati trovati dati originali per lo split.")
+
+X_original_df = data_original[features]
+y_original_df = data_original[targets].astype(int)
+groups = data_original['period_id'].str.split('__').str[0]
+
+# --------------------------------------------------------------------------
+# 2. CICLO DI CROSS-VALIDATION
+# --------------------------------------------------------------------------
+n_splits = 5
+gkf = GroupKFold(n_splits=n_splits)
+
+histories, val_scores, all_predictions, all_true_values = [], [], [], []
+
+for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_df, groups)):
+    print(f"\n===== FOLD {fold + 1}/{n_splits} =====")
+
+    train_fold_original = data_original.iloc[train_idx]
+    val_fold = data_original.iloc[val_idx]
+
+    train_fold_augmented = duplicate_groups_with_noise(train_fold_original, n_duplicates=5)
+    final_train_fold = pd.concat([train_fold_original, train_fold_augmented], ignore_index=True)
+
+    X_tr, y_tr = final_train_fold[features], final_train_fold[targets].astype(int).values
+    X_va, y_va = val_fold[features], val_fold[targets].astype(int).values
+    print(f"Train rows: {len(X_tr)} · Val rows: {len(X_va)}")
+
+    imputer = SimpleImputer(strategy="mean")
+    X_tr_imp = imputer.fit_transform(X_tr)
+    X_va_imp = imputer.transform(X_va)
+
+    scaler = StandardScaler()
+    X_tr_s = scaler.fit_transform(X_tr_imp)
+    X_va_s = scaler.transform(X_va_imp)
+
+    model = create_model(X_tr_s.shape[1], y_tr.shape[1])
+    es = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, verbose=1)
+    rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-5, verbose=1)
+
+    history = model.fit(
+        X_tr_s, y_tr,
+        validation_data=(X_va_s, y_va),
+        epochs=50,
+        batch_size=512,
+        verbose=1,
+        callbacks=[es, rlr],
+    )
+    histories.append(history)
+
+    score = model.evaluate(X_va_s, y_va, verbose=0)
+    val_scores.append(score)
+    print(f"Fold {fold + 1} Val Loss: {score[0]:.4f}, Val Accuracy: {score[1]:.4f}")
+
+    y_pred_probs = model.predict(X_va_s, verbose=0)
+    all_predictions.append(y_pred_probs)
+    all_true_values.append(y_va)
+
+# --------------------------------------------------------------------------
+# 3. ANALISI DEI RISULTATI AGGREGATI
+# --------------------------------------------------------------------------
+print("\n===== ANALISI AGGREGATA SUI RISULTATI DELLA CROSS-VALIDATION =====")
+
+# Unisci le predizioni di tutti i fold per avere un quadro completo
+y_va = np.concatenate(all_true_values)
+y_pred_probs = np.concatenate(all_predictions)
+
+# Plot delle curve di apprendimento medie
+plot_avg_learning_curve(histories, "loss", SAVE_DIR / "learning_curve_loss_avg.png")
+plot_avg_learning_curve(histories, "precision", SAVE_DIR / "learning_curve_precision_avg.png")
+
+# Plot: Curva ROC
 plt.figure(figsize=(9,7))
 for i, act in enumerate(ALL_ACTUATORS):
-    if y_va[:, i].max() == 0 or y_va[:, i].min() == 1:
-        continue  # label degenerata in val
+    if y_va[:, i].max() == 0 or y_va[:, i].min() == 1: continue
     fpr, tpr, _ = roc_curve(y_va[:, i], y_pred_probs[:, i])
     plt.plot(fpr, tpr, label=f"{act} (AUC={auc(fpr, tpr):.3f})")
-plt.plot([0,1],[0,1],"k--"); plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("Curva ROC")
+plt.plot([0,1],[0,1],"k--"); plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("Curva ROC (Aggregata su CV)")
 plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "roc_curve_aggregated.png")
 plt.show()
 
-# --- Plot: Precision-Recall ---
+# Plot: Curva Precision-Recall
 plt.figure(figsize=(9,7))
 for i, act in enumerate(ALL_ACTUATORS):
-    if y_va[:, i].sum() == 0:
-        continue
+    if y_va[:, i].sum() == 0: continue
     pr, rc, _ = precision_recall_curve(y_va[:, i], y_pred_probs[:, i])
     ap = average_precision_score(y_va[:, i], y_pred_probs[:, i])
     plt.plot(rc, pr, label=f"{act} (AP={ap:.3f})")
-plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title("Curva Precision-Recall")
+plt.xlabel("Recall"); plt.ylabel("Precision"); plt.title("Curva Precision-Recall (Aggregata su CV)")
 plt.legend(); plt.grid(True)
 plt.savefig(SAVE_DIR / "precision_recall_aggregated.png")
 plt.show()
 
-# --- Soglie ottimali (F1) e report ---
+# Calcolo soglie ottimali e report di classificazione
 optimal_thresholds = {}
-print("\n--- Soglie Ottimali (F1) ---")
+print("\n--- Soglie Ottimali (F1) - Calcolate su tutti i fold ---")
 for i, act in enumerate(ALL_ACTUATORS):
     if y_va[:, i].sum() == 0 or (y_va[:, i] == 0).all():
         optimal_thresholds[act] = 0.5
@@ -245,13 +271,21 @@ for i, act in enumerate(ALL_ACTUATORS):
 thr_vec = np.array([optimal_thresholds[a] for a in ALL_ACTUATORS])[None, :]
 y_pred_bin = (y_pred_probs > thr_vec).astype(int)
 
-print("\n--- Report di Classificazione (validation) ---")
+print("\n--- Report di Classificazione (aggregato su validation) ---")
 for i, act in enumerate(ALL_ACTUATORS):
     print(f"\n[{act}]")
     print(classification_report(y_va[:, i], y_pred_bin[:, i], digits=4, zero_division=0))
 
 emr = np.all(y_va == y_pred_bin, axis=1).mean()
 print(f"\nExact Match Ratio (EMR): {emr:.4f}")
+
+# Stampa delle performance medie finali
+avg_val_loss = np.mean([s[0] for s in val_scores])
+avg_val_accuracy = np.mean([s[1] for s in val_scores])
+print("\n--- Performance Medie Finali ---")
+print(f"Validation Loss Media: {avg_val_loss:.4f}")
+print(f"Validation Accuracy Media: {avg_val_accuracy:.4f}")
+
 
 print("\n✅ [SEZIONE 5] Addestramento+Validazione completati.")
 
