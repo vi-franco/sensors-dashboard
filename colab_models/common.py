@@ -42,11 +42,13 @@ def get_actuator_names():
     return ["Umidificatore", "Finestra", "Deumidificatore", "Riscaldamento", "Clima"]
 
 
-def log_actuator_stats(df: pd.DataFrame, name: str = "Dataset") -> None:
+def log_actuator_stats(df: pd.DataFrame, name: str = "Dataset", STATE_COLS: list[str]) -> None:
     if df.empty or not set(STATE_COLS).issubset(df.columns):
         print(f"\n--- Statistiche {name}: dataset vuoto/colonne mancanti ---")
         return
+
     print(f"\n--- Statistiche Attuatori per {name} ({len(df)} righe) ---")
+
     all_off = df[STATE_COLS].eq(0).all(axis=1).sum()
     any_on = df[STATE_COLS].eq(1).any(axis=1).sum()
     print(f"  · Tutti OFF: {all_off} ({all_off/len(df):.2%})")
