@@ -64,7 +64,6 @@ aug_df = augment_minority_periods_on_windows(
 )
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
-    # Concateniamo al dataset grezzo
     final_df = pd.concat([final_df, aug_df], ignore_index=True)
 
 print("✅ [SEZIONE 2] Dati caricati.")

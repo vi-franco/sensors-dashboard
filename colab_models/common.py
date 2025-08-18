@@ -60,8 +60,9 @@ def log_actuator_stats(df: pd.DataFrame, STATE_COLS: list[str], name: str) -> No
         print(f"  · {c.replace('state_','')}: {on} ({on/len(df):.2%})")
 
 
+
 def augment_minority_periods_on_windows(
-    df: pd.DataFrame,
+    train_base: pd.DataFrame,
     state_cols: List[str],
     time_col: str = "utc_datetime",
     group_col: str = "period_id",
@@ -71,31 +72,36 @@ def augment_minority_periods_on_windows(
     id_suffix: str = "AUG",
 ) -> pd.DataFrame:
 
-    num_cols = [c for c in df.select_dtypes(include=[np.number]).columns if c not in state_cols]
+    base = train_base.copy()
+    base[time_col] = pd.to_datetime(base[time_col], utc=True, errors="coerce")
 
+    # Colonne numeriche da perturbare (escludi target + id/tempo)
+    exclude = set(state_cols) | {time_col, group_col}
+    num_cols = [c for c in base.columns if c not in exclude and np.issubdtype(base[c].dtype, np.number)]
+
+    # Trova segmenti contigui ON per una colonna stato in un gruppo
     def segments_on(g: pd.DataFrame, state_col: str):
         g = g.sort_values(time_col)
         on = g[state_col].astype(int).to_numpy()
-        # trova run contigui di 1 con differenze su vettore esteso
+        if on.size == 0:
+            return []
         d = np.diff(np.r_[0, on, 0])
         starts = np.where(d == 1)[0]
         ends   = np.where(d == -1)[0] - 1
-        # restituisce (t0, t1) per ogni segmento
         return [(g.iloc[s][time_col], g.iloc[e][time_col]) for s, e in zip(starts, ends)]
 
-
     augmented = []
-    acts = [c.removeprefix("state_") for c in state_cols]
+    acts = [c[6:] if c.startswith("state_") else c for c in state_cols]
 
     for act in acts:
         state_col = f"state_{act}"
-        pos_now = int(df[state_col].sum())
+        pos_now = int(base[state_col].sum())
         if pos_now >= min_pos_rows_per_act:
             continue
 
-        # metadati segmenti ON (+/- contesto) disponibili nel train
-        meta = []
-        for pid, g in df.groupby(group_col, sort=False):
+        # Colleziona segmenti ON (+/- contesto) disponibili
+        meta = []  # (pid, t0c, t1c, pos_in_seg)
+        for pid, g in base.groupby(group_col, sort=False):
             for t0, t1 in segments_on(g, state_col):
                 t0c = t0 - timedelta(minutes=context_minutes)
                 t1c = t1 + timedelta(minutes=context_minutes)
@@ -114,26 +120,27 @@ def augment_minority_periods_on_windows(
         k = 0
         while need > 0:
             pid, t0c, t1c, pos_in_seg = meta[k % len(meta)]
-            g = df[df[group_col] == pid]
+            g = base[base[group_col] == pid]
             seg = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)].copy()
             if seg.empty:
                 k += 1
                 continue
 
-            # nuovo period_id per i duplicati
+            # Nuovo period_id per i duplicati
             seg[group_col] = f"{pid}__{act}_{id_suffix}_{k}"
 
-            # rumore ±noise_pct (moltiplicativo) sulle sole numeriche
+            # Rumore ±noise_pct (moltiplicativo) sulle numeriche
             if num_cols and noise_pct:
-                noise = (np.random.rand(len(seg), len(num_cols)) * 2 - 1) * noise_pct
-                seg.loc[:, num_cols] = seg.loc[:, num_cols].to_numpy(dtype=float) * (1.0 + noise)
+                for c in num_cols:
+                    n = np.random.uniform(-noise_pct, noise_pct, size=len(seg))
+                    seg[c] = seg[c].astype(float) * (1.0 + n)
 
             augmented.append(seg)
             need -= pos_in_seg
             k += 1
 
     if not augmented:
-        return pd.DataFrame(columns=df.columns)
+        return base.iloc[0:0].copy()  # DataFrame vuoto con stesse colonne
 
     aug_df = pd.concat(augmented, ignore_index=True)
     return aug_df.sort_values(time_col).reset_index(drop=True)
