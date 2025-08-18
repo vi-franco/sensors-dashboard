@@ -120,7 +120,7 @@ def create_model(input_dim, output_dim):
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
     m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
-              loss=focal_loss(alpha=0.25, gamma=2.0)
+              loss=focal_loss(alpha=0.25, gamma=2.0),
               metrics=["binary_accuracy", "precision", "recall"])
     return m
 
