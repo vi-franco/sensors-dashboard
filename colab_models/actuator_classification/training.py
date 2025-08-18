@@ -47,12 +47,17 @@ final_df = load_unified_dataset(DATASET_COMPLETO_PATH)
 if final_df.empty:
     raise SystemExit("DataFrame vuoto. Interrompo.")
 
+for col in final_df.select_dtypes(include=['float']).columns:
+    final_df[col] = pd.to_numeric(final_df[col], downcast='float')
+for col in final_df.select_dtypes(include=['int']).columns:
+    final_df[col] = pd.to_numeric(final_df[col], downcast='integer')
+
 print(final_df.head())
 
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
 data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
-aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=3)
+aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=2)
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
     data_for_training = pd.concat([data_for_training, aug_df], ignore_index=True)
@@ -195,14 +200,14 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     X_va_s = scaler.transform(X_va_imp)
 
     model = create_model(X_tr_s.shape[1], y_tr.shape[1])
-    es = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, verbose=1)
-    rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-5, verbose=1)
+    es = EarlyStopping(monitor="val_loss", patience=7, restore_best_weights=True, verbose=1)
+    rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1)
 
     history = model.fit(
         X_tr_s, y_tr,
         validation_data=(X_va_s, y_va),
         epochs=50,
-        batch_size=512,
+        batch_size=1024,
         verbose=1,
         callbacks=[es, rlr],
     )
