@@ -100,7 +100,6 @@ from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, Activation
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import keras
-import tensorflow.keras.backend as K
 
 def create_model(input_dim, output_dim):
     """Crea e compila il modello Keras."""
