@@ -48,8 +48,8 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
         fe_full = add_features_actuator_classification(history_df.copy())
         fe_last = fe_full.tail(1)
         feature_row = fe_last.reindex(columns=feature_names).fillna(0.0).astype(np.float32)
-        print("\n[DEBUG] Feature row (prima dello scaling):")
-        print(feature_row.to_string(index=False))
+        # print("\n[DEBUG] Feature row (prima dello scaling):")
+        # print(feature_row.to_string(index=False))
     except Exception as e:
         return None, None, f"Calcolo feature fallito: {e}"
 
@@ -68,12 +68,12 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
         prob = float(probs[i])
         threshold = float(thresholds.get(actuator_name, 0.5))
         state = 1 if prob >= threshold else 0
-        current_states[actuator_name] = state
-        probabilities[actuator_name] = prob
+        current_states[f'state_{actuator_name}'] = state
+        probabilities[f'prob_{actuator_name}'] = prob
 
     debug_line = ",".join(
-        f"[{name}|{float(thresholds.get(name, 0.5)):.2f}|{probabilities[name]:.2f}|{bool(current_states[name])}]"
-        for name in actuator_names_it
+        f"[{an}|{float(thresholds.get(an, 0.5)):.2f}|{float(probabilities.get(f'prob_{an}', 0.0)):.2f}|{bool(current_states.get(f'state_{an}', 0))}]"
+        for an in actuator_names_it
     )
     print(f"Result={debug_line}")
 
