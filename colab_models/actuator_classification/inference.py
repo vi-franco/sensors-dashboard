@@ -71,4 +71,10 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
         current_states[f"{actuator_name}"] = state
         probabilities[actuator_name] = prob
 
+    debug_line = ",".join(
+        f"[{actuator_name}|{threshold:.2f}|{prob:.2f}|{bool(state)}]"
+        for actuator_name in actuator_names_it
+    )
+    print(f"Result={debug_line}")
+
     return current_states, probabilities, "OK"
