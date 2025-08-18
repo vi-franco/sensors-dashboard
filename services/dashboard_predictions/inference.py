@@ -94,7 +94,7 @@ if __name__ == "__main__":
 
         for actuator in get_actuator_names():
             record[f'state_{actuator}'] = int(states.get(f'state_{actuator}', 0))
-            record[f'prob_{actuator}'] = int(probs.get(f'prob_{actuator}', 0))
+            record[f'prob_{actuator}'] = float(probs.get(f'prob_{actuator}', 0))
 
         helpers.save_results_to_db(record)
 
