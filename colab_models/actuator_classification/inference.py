@@ -66,14 +66,14 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
     actuator_names_it = get_actuator_names()
     for i, actuator_name in enumerate(actuator_names_it):
         prob = float(probs[i])
-        threshold = thresholds.get(actuator_name, 0.5)
+        threshold = float(thresholds.get(actuator_name, 0.5))
         state = 1 if prob >= threshold else 0
-        current_states[f"{actuator_name}"] = state
+        current_states[actuator_name] = state
         probabilities[actuator_name] = prob
 
     debug_line = ",".join(
-        f"[{actuator_name}|{threshold:.2f}|{prob:.2f}|{bool(state)}]"
-        for actuator_name in actuator_names_it
+        f"[{name}|{float(thresholds.get(name, 0.5)):.2f}|{probabilities[name]:.2f}|{bool(current_states[name])}]"
+        for name in actuator_names_it
     )
     print(f"Result={debug_line}")
 
