@@ -184,6 +184,7 @@ def get_rolling_features_config() -> dict:
        'std': [5, 60],
        'accel': 5
    }
+
 def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     feature_config = get_rolling_features_config()
     df = df.sort_values(by=["device", "period_id", "utc_datetime"])
@@ -228,9 +229,9 @@ def add_event_flags(df: pd.DataFrame) -> pd.DataFrame:
     # flag data-driven: drop/rise quando la pendenza 5m supera la deviazione a 30m
     eps = 1e-6
     def drop_flag(var):
-        return (df[f"{var}_trend_5m"] < -(df[f"{var}_std_30m"].fillna(0)+eps)).astype(int)
+        return (df[f"{var}_trend_5m"] < -(df[f"{var}_std_60m"].fillna(0)+eps)).astype(int)
     def rise_flag(var):
-        return (df[f"{var}_trend_5m"] >  (df[f"{var}_std_30m"].fillna(0)+eps)).astype(int)
+        return (df[f"{var}_trend_5m"] >  (df[f"{var}_std_60m"].fillna(0)+eps)).astype(int)
 
     df["co2_drop_flag_5m"]  = drop_flag("co2")
     df["voc_drop_flag_5m"]  = drop_flag("voc")
