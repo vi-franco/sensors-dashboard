@@ -44,16 +44,17 @@ print("✅ [SEZIONE 0] Setup completato.")
 print("\n--- [SEZIONE 2] Caricamento Dati ---")
 
 final_df = load_unified_dataset(DATASET_COMPLETO_PATH)
-
 if final_df.empty:
     raise SystemExit("DataFrame vuoto. Interrompo.")
 
 print(final_df.head())
 
-train_base_raw = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
+data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
+test_df           = get_data_from_periods(final_df, TEST_PERIODS_FILE)
+
 N_MIN = 10000  #
 aug_df = augment_minority_periods_on_windows(
-    train_base=train_base_raw,
+    train_base=data_for_training,
     state_cols=STATE_COLS,
     time_col="utc_datetime",
     group_col="period_id",
@@ -64,7 +65,7 @@ aug_df = augment_minority_periods_on_windows(
 )
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
-    final_df = pd.concat([final_df, aug_df], ignore_index=True)
+    final_df = pd.concat([data_for_training, aug_df], ignore_index=True)
 
 print("✅ [SEZIONE 2] Dati caricati.")
 
@@ -90,122 +91,94 @@ targets  = STATE_COLS.copy()
 
 print(f"Features: {len(features)} · Targets: {len(targets)}")
 
-data_for_training = get_data_from_periods(df, TRAINING_PERIODS_FILE)
-test_df           = get_data_from_periods(df, TEST_PERIODS_FILE)
+print(f"Righe Training: {len(df)} · Test: {len(test_df)}")
 
-print(f"Righe Training: {len(data_for_training)} · Test: {len(test_df)}")
-
-log_actuator_stats(data_for_training, STATE_COLS, "Training Set")
+log_actuator_stats(df, STATE_COLS, "Training Set")
 log_actuator_stats(test_df, STATE_COLS, "Test Set")
 
 print("✅ [SEZIONE 4] OK.")
 
 # ==============================================================================
-# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Group Expanding Time-Series CV)
+# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Group Expanding, no AUG in val)
 # ==============================================================================
 
-print("\n--- [SEZIONE 5] Addestramento e Valutazione con Group Expanding Split ---")
-
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import (
-    roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
-)
-from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Dense, Dropout
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 import tensorflow as tf
 import keras
 
 def create_model(input_dim, output_dim):
-    inp = Input(shape=(input_dim,))
-    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(inp)
+    x_in = Input(shape=(input_dim,))
+    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
     x = Dropout(0.1)(x)
     x = Dense(16, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
     x = Dropout(0.1)(x)
-    out = Dense(output_dim, activation="sigmoid")(x)
-    model = Model(inputs=inp, outputs=out)
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=5e-4),
-        loss="binary_crossentropy",
-        metrics=["binary_accuracy", "precision", "recall"],
-    )
-    return model
-
-def group_expanding_splits_no_aug_in_val(
-    df, group_col="period_id", time_col="utc_datetime",
-    n_splits=3, embargo_bases=1, warmup_blocks=1
-):
-    # mappa: group -> base_group (prima di "__")
-    grp_min = df.groupby(group_col)[time_col].min().sort_values()
-    groups = grp_min.index.to_series()
-    base = groups.str.split("__").str[0]
-
-    map_df = pd.DataFrame({
-        "group": groups.values,
-        "base": base.values,
-        "t0": grp_min.values
-    })
-
-    # ordine temporale dei base-period
-    base_order = (map_df.groupby("base")["t0"].min()
-                        .sort_values().index.to_numpy())
-    m = len(base_order)
-
-    # taglio in blocchi consecutivi (warmup + n_splits)
-    n_blocks = n_splits + warmup_blocks
-    block_sizes = np.full(n_blocks, m // n_blocks, dtype=int)
-    block_sizes[: m % n_blocks] += 1
-    cuts = np.cumsum(block_sizes)
-
-    for k in range(n_splits):
-        # finestre in termini di base-period
-        val_end   = cuts[warmup_blocks - 1 + k]
-        val_start = cuts[warmup_blocks - 1 + k - 1] if (warmup_blocks - 1 + k - 1) >= 0 else 0
-
-        # train-bases con embargo sul fondo
-        train_bases = base_order[:max(0, val_start - embargo_bases)]
-        val_bases   = base_order[val_start:val_end]
-
-        # gruppi per train/val:
-        # - TRAIN: tutti i gruppi (originali + AUG) i cui base ∈ train_bases
-        # - VAL:   solo i gruppi ORIGINALI (senza "__") i cui base ∈ val_bases
-        train_groups = map_df.loc[map_df["base"].isin(train_bases), "group"].unique()
-        val_groups   = map_df.loc[
-            (map_df["base"].isin(val_bases)) & (~map_df["group"].str.contains("__")),
-            "group"
-        ].unique()
-
-        tr_idx = df[df[group_col].isin(train_groups)].index.values
-        va_idx = df[df[group_col].isin(val_groups)].index.values
-
-        if len(tr_idx) == 0 or len(va_idx) == 0:
-            continue
-
-        yield tr_idx, va_idx, val_groups
+    y_out = Dense(output_dim, activation="sigmoid")(x)
+    m = Model(inputs=x_in, outputs=y_out)
+    m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
+              loss="binary_crossentropy",
+              metrics=["binary_accuracy", "precision", "recall"])
+    return m
 
 if data_for_training.empty:
     raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
 
-df_train = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
+df_train = df.sort_values("utc_datetime").reset_index(drop=True)
 X_df = df_train[features]
-y_df = df_train[targets].astype(int)
+y_df = df_train[targets].astype(int).values
 
-histories, all_y_val, all_y_pred_probs = [], [], []
+# mappa gruppi → base (senza suffisso __AUG)
+grp_start = df_train.groupby("period_id")["utc_datetime"].min().sort_values()
+groups = grp_start.index.to_series()
+base_ids = groups.str.split("__").str[0]
 
-for fold_no, (tr_idx, va_idx, val_groups) in enumerate(
-    group_expanding_splits_no_aug_in_val(
-        df_train, "period_id", "utc_datetime",
-        n_splits=3, embargo_bases=1, warmup_blocks=1
-    ), 1
-):
-    print(f"Fold {fold_no} - val groups: {list(val_groups)} (train={len(tr_idx)}, val={len(va_idx)})")
+order_df = (
+    grp_start.reset_index()
+    .assign(base=base_ids.values)
+    .groupby("base")["utc_datetime"].min()
+    .sort_values()
+    .reset_index()
+)
+base_order = order_df["base"].to_numpy()
+
+n_splits = 3
+warmup_blocks = 1
+embargo_bases = 1
+
+# taglio in (warmup + n_splits) blocchi consecutivi
+n_blocks = n_splits + warmup_blocks
+block_sizes = np.full(n_blocks, len(base_order) // n_blocks, dtype=int)
+block_sizes[: len(base_order) % n_blocks] += 1
+cuts = np.cumsum(block_sizes)
+
+histories, all_y_val, all_y_pred = [], [], []
+
+for k in range(n_splits):
+    val_end = cuts[warmup_blocks - 1 + k]
+    val_start = cuts[warmup_blocks - 2 + k] if (warmup_blocks - 2 + k) >= 0 else 0
+
+    train_bases = base_order[: max(0, val_start - embargo_bases)]
+    val_bases = base_order[val_start:val_end]
+
+    # train: tutti i gruppi (originali + AUG) con base in train_bases
+    train_groups = groups[base_ids.isin(train_bases)].values
+    # val: solo gruppi originali (senza __) con base in val_bases
+    is_original = ~groups.str.contains("__")
+    val_groups = groups[is_original & base_ids.isin(val_bases)].values
+
+    tr_idx = df_train["period_id"].isin(train_groups).to_numpy().nonzero()[0]
+    va_idx = df_train["period_id"].isin(val_groups).to_numpy().nonzero()[0]
+    if len(tr_idx) == 0 or len(va_idx) == 0:
+        print(f"[SKIP] Fold {k+1}: train={len(tr_idx)}, val={len(va_idx)}")
+        continue
+
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
-    y_tr, y_va = y_df.iloc[tr_idx], y_df.iloc[va_idx]
+    y_tr, y_va = y_df[tr_idx], y_df[va_idx]
 
-    # Imputazione e scaling: fit SOLO sul train
     imputer = SimpleImputer(strategy="mean")
     X_tr_imp = imputer.fit_transform(X_tr)
     X_va_imp = imputer.transform(X_va)
@@ -214,25 +187,40 @@ for fold_no, (tr_idx, va_idx, val_groups) in enumerate(
     X_tr_s = scaler.fit_transform(X_tr_imp)
     X_va_s = scaler.transform(X_va_imp)
 
+    # pesi train (label-wise) e maschera val per label non valutabili
+    pos_tr = y_tr.sum(axis=0)
+    neg_tr = y_tr.shape[0] - pos_tr
+    alpha = (neg_tr / np.maximum(pos_tr, 1)).clip(1.0, 50.0)
+    W_tr = np.where(y_tr == 1, alpha, 1.0)
+
+    pos_va = y_va.sum(axis=0)
+    neg_va = y_va.shape[0] - pos_va
+    col_mask = ((pos_va > 0) & (neg_va > 0)).astype(float)
+    W_va = np.tile(col_mask, (y_va.shape[0], 1))
+
+    print(f"Fold {k+1} - val groups: {list(val_groups)} (train={len(tr_idx)}, val={len(va_idx)})")
+
     model = create_model(X_tr_s.shape[1], y_tr.shape[1])
-    es = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=0)
-    history = model.fit(
+    es = EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True, verbose=1)
+    rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1)
+
+    hist = model.fit(
         X_tr_s, y_tr,
+        sample_weight=W_tr,
+        validation_data=(X_va_s, y_va, W_va),
         epochs=20,
         batch_size=64,
-        validation_data=(X_va_s, y_va),
-        callbacks=[es],
         verbose=1,
+        callbacks=[es, rlr],
     )
-    histories.append(history)
+    histories.append(hist)
 
-    preds = model.predict(X_va_s, verbose=0)
-    all_y_val.append(y_va.values)
-    all_y_pred_probs.append(preds)
+    y_pred = model.predict(X_va_s, verbose=0)
+    all_y_val.append(y_va)
+    all_y_pred.append(y_pred)
 
-# Aggregazione dei fold di validazione
-y_val_all = np.concatenate(all_y_val, axis=0)
-y_pred_probs_all = np.concatenate(all_y_pred_probs, axis=0)
+y_val_all = np.concatenate(all_y_val, axis=0) if all_y_val else np.empty((0, y_df.shape[1]))
+y_pred_probs_all = np.concatenate(all_y_pred, axis=0) if all_y_pred else np.empty((0, y_df.shape[1]))
 
 
 # Curve apprendimento medie
