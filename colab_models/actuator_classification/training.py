@@ -107,11 +107,15 @@ def create_model(input_dim, output_dim):
     x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = Dropout(0.3)(x)
+    x = Dropout(0.4)(x)
     x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
     x = Dropout(0.3)(x)
+    x = Dense(16, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
+    x = BatchNormalization()(x)
+    x = Activation("relu")(x)
+    x = Dropout(0.2)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
     m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
@@ -178,14 +182,14 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     target1 = ['state_Riscaldamento']
     aug_df_1 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=5,
+        n_duplicates=10,
         target_actuators=target1
     )
 
     target2 = ['state_Umidificatore', 'state_Deumidificatore']
     aug_df_2 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=3,
+        n_duplicates=7,
         target_actuators=target2
     )
 
