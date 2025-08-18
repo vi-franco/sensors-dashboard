@@ -112,10 +112,6 @@ def create_model(input_dim, output_dim):
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
     x = Dropout(0.3)(x)
-    x = Dense(16, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
-    x = BatchNormalization()(x)
-    x = Activation("relu")(x)
-    x = Dropout(0.2)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
     m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
