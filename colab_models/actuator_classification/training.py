@@ -52,7 +52,7 @@ print(final_df.head())
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
 data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
-aug_df = duplicate_groups_with_noise(train_df, n_duplicates=10)
+aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=10)
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
     data_for_training = pd.concat([data_for_training, aug_df], ignore_index=True)
