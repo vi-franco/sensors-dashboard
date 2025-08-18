@@ -98,8 +98,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 from tensorflow.keras import Input, Model
-from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
 import tensorflow as tf
 import keras
 
