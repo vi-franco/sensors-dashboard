@@ -301,7 +301,7 @@ def create_features_for_actuator_model(
             df[f"{c}_mean_{win_long}m"]   = g.rolling(win_long,  min_periods=2).mean().reset_index(level=0, drop=True)
             df[f"{c}_std_{win_short}m"]   = g.rolling(win_short, min_periods=2).std().reset_index(level=0, drop=True)
             df[f"{c}_std_{win_long}m"]    = g.rolling(win_long,  min_periods=2).std().reset_index(level=0, drop=True)
-            df[f"{c}_accel_1m"]           = df.groupby("device")[f"{c}_trend_{win_short}m"].diff()
+            df[f"{c}_accel_{win_short}m"]           = df.groupby("device")[f"{c}_trend_{win_short}m"].diff()
         return df
 
     def add_external_trends(df, cols, win_short=5, win_long=30):
@@ -719,7 +719,7 @@ def create_features_for_action_model(df_hist, weather_df, required_features_list
             df[f"{feat}_std_{w}m"]  = g.rolling(window=w, min_periods=2).std()
         for w in diff_w:
             df[f"{feat}_trend_{w}m"] = g.diff(w)
-        df[f"{feat}_accel_1m"] = df[f"{feat}_trend_1m"].diff()
+        df[f"{feat}_accel_5m"] = df[f"{feat}_trend_1m"].diff()
 
     # trend esterni
     for w in [5,15,30]:
