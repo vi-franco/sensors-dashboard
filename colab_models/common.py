@@ -110,7 +110,7 @@ def augment_specific_groups_with_noise(
                     factor = 1 + (random_noise * random_sign)
                     new_group[col] = new_group[col].astype(float) * factor
 
-                new_id = f"{original_id}_{id_suffix}_{i + 1}"
+                new_id = f"{original_id}_{id_suffix}__{i + 1}"
                 new_group[group_col] = new_id
                 augmented_dfs.append(new_group)
 
