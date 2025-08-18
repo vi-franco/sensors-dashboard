@@ -182,21 +182,25 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     target1 = ['state_Riscaldamento']
     aug_df_1 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=20,
-        target_actuators=target1
+        n_duplicates=5,
+        target_actuators=target1,
+        noise_min: float = 0.01,
+        noise_max: float = 0.03,
     )
 
     target2 = ['state_Deumidificatore']
     aug_df_2 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=10,
-        target_actuators=target2
+        n_duplicates=3,
+        target_actuators=target2,
+        noise_min: float = 0.01,
+        noise_max: float = 0.03,
     )
 
     target3 = ['state_Umidificatore']
     aug_df_3 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=5,
+        n_duplicates=1,
         target_actuators=target3
     )
 
