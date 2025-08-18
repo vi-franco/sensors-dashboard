@@ -1,7 +1,7 @@
 {
-    "Umidificatore": 0.44240957498550415,
-    "Finestra": 0.5175437927246094,
-    "Deumidificatore": 0.3984246551990509,
-    "Riscaldamento": 0.17880964279174805,
-    "Clima": 0.3756324052810669
+    "Umidificatore": 0.021026892587542534,
+    "Finestra": 0.16383007168769836,
+    "Deumidificatore": 0.07427304238080978,
+    "Riscaldamento": 5.34602643228547e-30,
+    "Clima": 0.07467277348041534
 }
