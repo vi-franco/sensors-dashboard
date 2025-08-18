@@ -182,21 +182,28 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     target1 = ['state_Riscaldamento']
     aug_df_1 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=10,
+        n_duplicates=20,
         target_actuators=target1
     )
 
-    target2 = ['state_Umidificatore', 'state_Deumidificatore']
+    target2 = ['state_Deumidificatore']
     aug_df_2 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=7,
+        n_duplicates=10,
         target_actuators=target2
     )
 
-    if not aug_df_1.empty or not aug_df_2.empty:
-        righe_aggiunte = len(aug_df_1) + len(aug_df_2)
+    target3 = ['state_Umidificatore']
+    aug_df_3 = augment_specific_groups_with_noise(
+        df=train_fold_original,
+        n_duplicates=5,
+        target_actuators=target3
+    )
+
+    if not aug_df_1.empty or not aug_df_2.empty or not aug_df_3.empty:
+        righe_aggiunte = len(aug_df_1) + len(aug_df_2) + len(aug_df_3)
         print(f"[AUG] Aggiunte {righe_aggiunte} righe (solo training).")
-        final_train_fold = pd.concat([train_fold_original, aug_df_1, aug_df_2], ignore_index=True)
+        final_train_fold = pd.concat([train_fold_original, aug_df_1, aug_df_2, aug_df_3], ignore_index=True)
 
     X_tr, y_tr = final_train_fold[features], final_train_fold[targets].astype(int).values
     X_va, y_va = val_fold[features], val_fold[targets].astype(int).values
