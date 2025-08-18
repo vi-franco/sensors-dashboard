@@ -167,13 +167,13 @@ X_tr_s = scaler.fit_transform(X_tr_imp)
 X_va_s = scaler.transform(X_va_imp)
 
 model = create_model(X_tr_s.shape[1], y_tr.shape[1])
-es = EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True, verbose=1)
-rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1)
+es = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, verbose=1)
+rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-5, verbose=1)
 
 history = model.fit(
     X_tr_s, y_tr,
     validation_data=(X_va_s, y_va),
-    epochs=20,
+    epochs=50,
     batch_size=512,
     verbose=1,
     callbacks=[es, rlr],
