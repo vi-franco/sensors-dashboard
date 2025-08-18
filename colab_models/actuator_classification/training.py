@@ -54,9 +54,6 @@ for col in final_df.select_dtypes(include=['int']).columns:
 
 print(final_df.head())
 
-data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
-data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
-
 print("✅ [SEZIONE 2] Dati caricati.")
 
 # ==============================================================================
@@ -65,16 +62,19 @@ print("✅ [SEZIONE 2] Dati caricati.")
 
 print("\n--- [SEZIONE 3] Feature Engineering ---")
 
-data_for_training = add_features_actuator_classification(data_for_training)
-print(data_for_training.head())
+data_for_training = add_features_actuator_classification(final_df)
+print(final_df.head())
 
-print(f"✅ [SEZIONE 3] Completata. Shape: {data_for_training.shape}")
+print(f"✅ [SEZIONE 3] Completata. Shape: {final_df.shape}")
 
 
 # ==============================================================================
 # SEZIONE 4 — DEFINIZIONE FEATURE E SPLIT TRAIN/TEST
 # ==============================================================================
 print("\n--- [SEZIONE 4] Definizione Feature e Split ---")
+
+data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
+data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
 features = final_features_actuator_classification()
 targets  = STATE_COLS.copy()

@@ -6,12 +6,15 @@ def add_features_baseline_prediction(df: pd.DataFrame) -> pd.DataFrame:
     ensure_min_columns_baseline_prediction(df)
     return add_features_actuator_classification(df)
 
+def get_rolling_features() -> list:
+    return ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"]
 
 def add_features_actuator_classification(df: pd.DataFrame) -> pd.DataFrame:
+    rolling_features = get_rolling_features()
     ensure_min_columns_actuator_classification(df)
     df = add_time_cyclic(df)
     df = add_in_out_delta_features(df)
-    df = add_rolling_features(df, ["temperature_sensor", "absolute_humidity_sensor", "co2", "voc", "temp_diff_in_out", "ah_diff_in_out", "dewpoint_diff_in_out"])
+    df = add_rolling_features(df, rolling_features)
     df = add_external_trends(df, ["temperature_external", "absolute_humidity_external"])
     df = add_event_flags(df)
     return df
@@ -74,25 +77,18 @@ def final_features_baseline_prediction() -> list:
     return final_features_actuator_classification()
 
 def final_features_actuator_classification() -> list:
-    return [
+    features = [
         # Base
         "temperature_sensor","absolute_humidity_sensor","co2","voc",
         "temperature_external","absolute_humidity_external",
         "ground_level_pressure","wind_speed","clouds_percentage","rain_1h",
-        "dew_point_sensor","dew_point_external",
 
         # Gradienti/VPD/Interazioni
         "temp_diff_in_out","ah_diff_in_out","dewpoint_diff_in_out",
-        "vpd_in","vpd_out","vpd_diff","temp_diff_x_wind",
+        "vpd_diff","temp_diff_x_wind",
 
         # Tempo locale
         "hour_sin","hour_cos","minutes_from_sunrise","minutes_to_sunset",
-
-        # Rolling 5m/30m interni
-        "temperature_sensor_accel_1m","temperature_sensor_trend_5m","temperature_sensor_trend_30m","temperature_sensor_mean_30m","temperature_sensor_std_30m",
-        "absolute_humidity_sensor_accel_1m", "absolute_humidity_sensor_trend_5m","absolute_humidity_sensor_trend_30m","absolute_humidity_sensor_mean_30m","absolute_humidity_sensor_std_30m",
-        "co2_accel_1m","co2_trend_5m","co2_trend_30m","co2_mean_30m","co2_std_30m",
-        "voc_accel_1m","voc_trend_5m","voc_trend_30m","voc_mean_30m","voc_std_30m",
 
         # Trend esterni
         "temperature_external_trend_5m","temperature_external_trend_30m",
@@ -122,6 +118,14 @@ def final_features_actuator_classification() -> list:
         "dewpoint_diff_in_out_mean_60m",
         "dewpoint_diff_in_out_std_60m",
     ]
+
+    rolling_features = get_rolling_features()
+    feature_config = get_rolling_features_config()
+    features[:]  = [
+        f"{c}_{f}{w}m" for c in rolling_features
+        for f in feature_config.keys()
+        for w in feature_config[f]
+    ] + features
 
 def final_features_actuator_classification_lstm() -> list:
     return [
@@ -173,13 +177,15 @@ def add_in_out_delta_features(df: pd.DataFrame) -> pd.DataFrame:
     df["temp_diff_x_wind"] = df["temp_diff_in_out"] * df["wind_speed"].fillna(0)
     return df
 
+def get_rolling_features_config() -> dict:
+    return {
+       'trend': [5, 60],
+       'mean': [5, 60],
+       'std': [5, 60],
+       'accel': 5
+   }
 def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    feature_config = {
-        'trend': [5, 15, 30],
-        'mean': [15, 30, 60],
-        'std': [15, 30, 60],
-        'accel': 5
-    }
+    feature_config = get_rolling_features_config()
     df = df.sort_values(by=["device", "period_id", "utc_datetime"])
     grouper = df.groupby(["device", "period_id"])
     for c in cols:
