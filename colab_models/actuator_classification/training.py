@@ -184,8 +184,8 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
         df=train_fold_original,
         n_duplicates=5,
         target_actuators=target1,
-        noise_min: float = 0.01,
-        noise_max: float = 0.03,
+        noise_min=0.01,
+        noise_max=0.03,
     )
 
     target2 = ['state_Deumidificatore']
@@ -193,8 +193,8 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
         df=train_fold_original,
         n_duplicates=3,
         target_actuators=target2,
-        noise_min: float = 0.01,
-        noise_max: float = 0.03,
+        noise_min=0.01,
+        noise_max=0.03,
     )
 
     target3 = ['state_Umidificatore']
