@@ -50,7 +50,7 @@ if final_df.empty:
 print(final_df.head())
 
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
-test_df           = get_data_from_periods(final_df, TEST_PERIODS_FILE)
+data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
 N_MIN = 10000  #
 aug_df = augment_minority_periods_on_windows(
@@ -65,7 +65,7 @@ aug_df = augment_minority_periods_on_windows(
 )
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
-    final_df = pd.concat([data_for_training, aug_df], ignore_index=True)
+    data_for_training = pd.concat([data_for_training, aug_df], ignore_index=True)
 
 print("✅ [SEZIONE 2] Dati caricati.")
 
@@ -75,10 +75,10 @@ print("✅ [SEZIONE 2] Dati caricati.")
 
 print("\n--- [SEZIONE 3] Feature Engineering ---")
 
-df = add_features_actuator_classification(final_df)
-print(df.head())
+data_for_training = add_features_actuator_classification(data_for_training)
+print(data_for_training.head())
 
-print(f"✅ [SEZIONE 3] Completata. Shape: {df.shape}")
+print(f"✅ [SEZIONE 3] Completata. Shape: {data_for_training.shape}")
 
 
 # ==============================================================================
@@ -91,10 +91,10 @@ targets  = STATE_COLS.copy()
 
 print(f"Features: {len(features)} · Targets: {len(targets)}")
 
-print(f"Righe Training: {len(df)} · Test: {len(test_df)}")
+print(f"Righe Training: {len(df)} · Test: {len(data_for_test)}")
 
-log_actuator_stats(df, STATE_COLS, "Training Set")
-log_actuator_stats(test_df, STATE_COLS, "Test Set")
+log_actuator_stats(data_for_training, STATE_COLS, "Training Set")
+log_actuator_stats(data_for_test, STATE_COLS, "Test Set")
 
 print("✅ [SEZIONE 4] OK.")
 
@@ -127,12 +127,12 @@ def create_model(input_dim, output_dim):
 if data_for_training.empty:
     raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
 
-df_train = df.sort_values("utc_datetime").reset_index(drop=True)
-X_df = df_train[features]
-y_df = df_train[targets].astype(int).values
+data_for_training = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
+X_df = data_for_training[features]
+y_df = data_for_training[targets].astype(int).values
 
 # mappa gruppi → base (senza suffisso __AUG)
-grp_start = df_train.groupby("period_id")["utc_datetime"].min().sort_values()
+grp_start = data_for_training.groupby("period_id")["utc_datetime"].min().sort_values()
 groups = grp_start.index.to_series()
 base_ids = groups.str.split("__").str[0]
 
@@ -190,7 +190,15 @@ for k in range(n_splits):
     # pesi train (label-wise) e maschera val per label non valutabili
     pos_tr = y_tr.sum(axis=0)
     neg_tr = y_tr.shape[0] - pos_tr
-    alpha = (neg_tr / np.maximum(pos_tr, 1)).clip(1.0, 50.0)
+    alpha = (neg_tr / np.maximum(pos_tr, 1)).clip(1.0, 50.0).astype(np.float32)
+    alpha_tf = tf.constant(alpha, dtype=tf.float32)
+
+    def weighted_bce(y_true, y_pred):
+        # BCE per elemento (batch, n_labels)
+        l = tf.keras.backend.binary_crossentropy(y_true, y_pred)
+        w = 1.0 + (alpha_tf - 1.0) * y_true   # pesa i positivi rari
+        return tf.reduce_mean(l * w)
+
     W_tr = np.where(y_tr == 1, alpha, 1.0)
 
     pos_va = y_va.sum(axis=0)
@@ -201,13 +209,16 @@ for k in range(n_splits):
     print(f"Fold {k+1} - val groups: {list(val_groups)} (train={len(tr_idx)}, val={len(va_idx)})")
 
     model = create_model(X_tr_s.shape[1], y_tr.shape[1])
+    model.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
+                  loss=weighted_bce,
+                  metrics=["binary_accuracy", "precision", "recall"])
+
     es = EarlyStopping(monitor="val_loss", patience=3, restore_best_weights=True, verbose=1)
     rlr = ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=2, min_lr=1e-5, verbose=1)
 
     hist = model.fit(
         X_tr_s, y_tr,
-        sample_weight=W_tr,
-        validation_data=(X_va_s, y_va, W_va),
+        validation_data=(X_va_s, y_va),
         epochs=20,
         batch_size=64,
         verbose=1,
