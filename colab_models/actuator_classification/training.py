@@ -85,51 +85,23 @@ log_actuator_stats(test_df, STATE_COLS, "Test Set")
 print("✅ [SEZIONE 4] OK.")
 
 # ==============================================================================
-# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Time-Series Cross-Validation)
+# SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Group Expanding Time-Series CV)
 # ==============================================================================
-def group_timeseries_splits(df, group_col="period_id", time_col="utc_datetime",
-                            n_splits=3, embargo_groups=0):
-    # Ordina i gruppi per tempo di inizio
-    grp_order = (df.groupby(group_col)[time_col]
-                   .min()
-                   .sort_values())
-    groups = grp_order.index.to_numpy()
-    m = len(groups)
 
-    # Divide i gruppi in n_splits blocchi consecutivi (senza shuffle)
-    fold_sizes = np.full(n_splits, m // n_splits, dtype=int)
-    fold_sizes[:m % n_splits] += 1
+print("\n--- [SEZIONE 5] Addestramento e Valutazione con Group Expanding Split ---")
 
-    start = 0
-    for fold_size in fold_sizes:
-        stop = start + fold_size
-        val_groups = groups[start:stop]
-        # Purge/embargo: esclude i gruppi vicini alla val dal train
-        train_groups = groups[:max(0, start - embargo_groups)]
-        tr_idx = df[df[group_col].isin(train_groups)].index.values
-        va_idx = df[df[group_col].isin(val_groups)].index.values
-        yield tr_idx, va_idx, val_groups
-        start = stop
-
-print("\n--- [SEZIONE 5] Addestramento e Valutazione con TimeSeriesSplit ---")
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
     roc_curve, auc, precision_recall_curve, average_precision_score, classification_report
 )
-from skmultilearn.model_selection import IterativeStratification
 from sklearn.preprocessing import StandardScaler
-import numpy as np
-
-if data_for_training.empty:
-    raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
-
-df_train = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
-
-X_df = df_train[features]
-y_df = df_train[targets].astype(int)
-
-N_SPLITS = 3
-kfold = IterativeStratification(n_splits=N_SPLITS, order=1)
+from sklearn.impute import SimpleImputer
+from tensorflow.keras import Input, Model
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+import tensorflow as tf
+import keras
 
 def create_model(input_dim, output_dim):
     inp = Input(shape=(input_dim,))
@@ -142,40 +114,77 @@ def create_model(input_dim, output_dim):
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=5e-4),
         loss="binary_crossentropy",
-        metrics=["binary_accuracy", "precision", "recall"]
+        metrics=["binary_accuracy", "precision", "recall"],
     )
     return model
 
+def group_expanding_splits(df, group_col="period_id", time_col="utc_datetime",
+                           n_splits=3, embargo_groups=1, warmup_blocks=1):
+    grp_order = (df.groupby(group_col)[time_col].min().sort_values())
+    groups = grp_order.index.to_numpy()
+    m = len(groups)
+    n_blocks = n_splits + warmup_blocks
+    block_sizes = np.full(n_blocks, m // n_blocks, dtype=int)
+    block_sizes[: m % n_blocks] += 1
+    cuts = np.cumsum(block_sizes)
+
+    for k in range(n_splits):
+        val_start = cuts[warmup_blocks - 1 + k - 1] if (warmup_blocks - 1 + k - 1) >= 0 else 0
+        val_end   = cuts[warmup_blocks - 1 + k]
+        train_groups = groups[:max(0, val_start - embargo_groups)]
+        val_groups   = groups[val_start:val_end]
+        tr_idx = df[df[group_col].isin(train_groups)].index.values
+        va_idx = df[df[group_col].isin(val_groups)].index.values
+        if len(tr_idx) == 0 or len(va_idx) == 0:
+            continue
+        yield tr_idx, va_idx, val_groups
+
+if data_for_training.empty:
+    raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
+
+df_train = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
+X_df = df_train[features]
+y_df = df_train[targets].astype(int)
+
 histories, all_y_val, all_y_pred_probs = [], [], []
 
-for fold_no, (tr_idx, va_idx, val_groups) in enumerate(group_timeseries_splits(df_train, "period_id", "utc_datetime", n_splits=3, embargo_groups=1), 1):
-    print(f"Fold {fold_no} - val groups: {list(val_groups)}")
+for fold_no, (tr_idx, va_idx, val_groups) in enumerate(
+    group_expanding_splits(df_train, "period_id", "utc_datetime",
+                           n_splits=3, embargo_groups=1, warmup_blocks=1), 1
+):
+    print(f"Fold {fold_no} - val groups: {list(val_groups)} (train={len(tr_idx)}, val={len(va_idx)})")
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
     y_tr, y_va = y_df.iloc[tr_idx], y_df.iloc[va_idx]
 
+    # Imputazione e scaling: fit SOLO sul train
+    imputer = SimpleImputer(strategy="mean")
+    X_tr_imp = imputer.fit_transform(X_tr)
+    X_va_imp = imputer.transform(X_va)
+
     scaler = StandardScaler()
-    X_tr_s = scaler.fit_transform(X_tr)
-    X_va_s = scaler.transform(X_va)
+    X_tr_s = scaler.fit_transform(X_tr_imp)
+    X_va_s = scaler.transform(X_va_imp)
 
     model = create_model(X_tr_s.shape[1], y_tr.shape[1])
     es = EarlyStopping(monitor="val_loss", patience=5, restore_best_weights=True, verbose=0)
     history = model.fit(
-        X_tr_s,
-        y_tr,
+        X_tr_s, y_tr,
         epochs=20,
         batch_size=64,
         validation_data=(X_va_s, y_va),
         callbacks=[es],
-        verbose=1)
+        verbose=1,
+    )
     histories.append(history)
 
     preds = model.predict(X_va_s, verbose=0)
     all_y_val.append(y_va.values)
     all_y_pred_probs.append(preds)
 
-# Aggrego i risultati di tutti i fold di validazione
+# Aggregazione dei fold di validazione
 y_val_all = np.concatenate(all_y_val, axis=0)
 y_pred_probs_all = np.concatenate(all_y_pred_probs, axis=0)
+
 
 # Curve apprendimento medie
 def plot_mean_learning_curve(histories, metric, save_path):
