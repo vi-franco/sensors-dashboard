@@ -134,25 +134,56 @@ def create_model(input_dim, output_dim):
     )
     return model
 
-def group_expanding_splits(df, group_col="period_id", time_col="utc_datetime",
-                           n_splits=3, embargo_groups=1, warmup_blocks=1):
-    grp_order = (df.groupby(group_col)[time_col].min().sort_values())
-    groups = grp_order.index.to_numpy()
-    m = len(groups)
+def group_expanding_splits_no_aug_in_val(
+    df, group_col="period_id", time_col="utc_datetime",
+    n_splits=3, embargo_bases=1, warmup_blocks=1
+):
+    # mappa: group -> base_group (prima di "__")
+    grp_min = df.groupby(group_col)[time_col].min().sort_values()
+    groups = grp_min.index.to_series()
+    base = groups.str.split("__").str[0]
+
+    map_df = pd.DataFrame({
+        "group": groups.values,
+        "base": base.values,
+        "t0": grp_min.values
+    })
+
+    # ordine temporale dei base-period
+    base_order = (map_df.groupby("base")["t0"].min()
+                        .sort_values().index.to_numpy())
+    m = len(base_order)
+
+    # taglio in blocchi consecutivi (warmup + n_splits)
     n_blocks = n_splits + warmup_blocks
     block_sizes = np.full(n_blocks, m // n_blocks, dtype=int)
     block_sizes[: m % n_blocks] += 1
     cuts = np.cumsum(block_sizes)
 
     for k in range(n_splits):
-        val_start = cuts[warmup_blocks - 1 + k - 1] if (warmup_blocks - 1 + k - 1) >= 0 else 0
+        # finestre in termini di base-period
         val_end   = cuts[warmup_blocks - 1 + k]
-        train_groups = groups[:max(0, val_start - embargo_groups)]
-        val_groups   = groups[val_start:val_end]
+        val_start = cuts[warmup_blocks - 1 + k - 1] if (warmup_blocks - 1 + k - 1) >= 0 else 0
+
+        # train-bases con embargo sul fondo
+        train_bases = base_order[:max(0, val_start - embargo_bases)]
+        val_bases   = base_order[val_start:val_end]
+
+        # gruppi per train/val:
+        # - TRAIN: tutti i gruppi (originali + AUG) i cui base ∈ train_bases
+        # - VAL:   solo i gruppi ORIGINALI (senza "__") i cui base ∈ val_bases
+        train_groups = map_df.loc[map_df["base"].isin(train_bases), "group"].unique()
+        val_groups   = map_df.loc[
+            (map_df["base"].isin(val_bases)) & (~map_df["group"].str.contains("__")),
+            "group"
+        ].unique()
+
         tr_idx = df[df[group_col].isin(train_groups)].index.values
         va_idx = df[df[group_col].isin(val_groups)].index.values
+
         if len(tr_idx) == 0 or len(va_idx) == 0:
             continue
+
         yield tr_idx, va_idx, val_groups
 
 if data_for_training.empty:
@@ -165,8 +196,10 @@ y_df = df_train[targets].astype(int)
 histories, all_y_val, all_y_pred_probs = [], [], []
 
 for fold_no, (tr_idx, va_idx, val_groups) in enumerate(
-    group_expanding_splits(df_train, "period_id", "utc_datetime",
-                           n_splits=3, embargo_groups=1, warmup_blocks=1), 1
+    group_expanding_splits_no_aug_in_val(
+        df_train, "period_id", "utc_datetime",
+        n_splits=3, embargo_bases=1, warmup_blocks=1
+    ), 1
 ):
     print(f"Fold {fold_no} - val groups: {list(val_groups)} (train={len(tr_idx)}, val={len(va_idx)})")
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
