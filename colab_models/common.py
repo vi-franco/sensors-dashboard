@@ -61,24 +61,62 @@ def log_actuator_stats(df: pd.DataFrame, STATE_COLS: list[str], name: str) -> No
 
 
 
-def duplicate_groups_with_noise(df, n_duplicates, group_col="period_id", noise_min=0.005, noise_max=0.01, id_suffix="AUG", exclude_cols=None):
-    """Duplica i gruppi e aggiunge rumore (funzione definita in precedenza)."""
-    if n_duplicates <= 0: return pd.DataFrame(columns=df.columns)
+def augment_specific_groups_with_noise(
+    df: pd.DataFrame,
+    n_duplicates: int,
+    target_actuators: List[str],
+    group_col: str = "period_id",
+    noise_min: float = 0.005,
+    noise_max: float = 0.01,
+    id_suffix: str = "AUG",
+    exclude_cols: Optional[List[str]] = None
+):
+    """
+    Duplica e aggiunge rumore SOLO ai gruppi che contengono almeno un'attivazione
+    (valore = 1) in una delle colonne specificate in target_actuators.
+
+    Args:
+        df (pd.DataFrame): Il DataFrame di input (tipicamente il train_fold_original).
+        n_duplicates (int): Il numero di volte che ogni gruppo idoneo deve essere duplicato.
+        target_actuators (List[str]): Lista di colonne "state" da controllare.
+                                      Un gruppo viene aumentato se almeno una di queste
+                                      colonne ha valore 1 in almeno una riga.
+        ... (altri parametri come prima)
+    """
+    if n_duplicates <= 0 or not target_actuators:
+        return pd.DataFrame(columns=df.columns)
+
+    # Assicura che tutte le colonne target esistano nel DataFrame per evitare errori
+    for act in target_actuators:
+        if act not in df.columns:
+            raise ValueError(f"La colonna target '{act}' non è presente nel DataFrame.")
+
     if exclude_cols is None: exclude_cols = []
     cols_to_exclude_from_noise = set(exclude_cols) | {group_col}
     numeric_cols = [col for col in df.columns if pd.api.types.is_numeric_dtype(df[col]) and col not in cols_to_exclude_from_noise]
+
     augmented_dfs = []
+
     for original_id, group_df in df.groupby(group_col):
-        for i in range(n_duplicates):
-            new_group = group_df.copy()
-            for col in numeric_cols:
-                noise_size = len(new_group)
-                random_noise = np.random.uniform(noise_min, noise_max, size=noise_size)
-                random_sign = np.random.choice([-1, 1], size=noise_size)
-                factor = 1 + (random_noise * random_sign)
-                new_group[col] = new_group[col].astype(float) * factor
-            new_id = f"{original_id}_{id_suffix}_{i + 1}"
-            new_group[group_col] = new_id
-            augmented_dfs.append(new_group)
-    if not augmented_dfs: return pd.DataFrame(columns=df.columns)
+        if (group_df[target_actuators] == 1).any().any():
+
+            # Se la condizione è vera, procedi con l'aumento come prima
+            for i in range(n_duplicates):
+                new_group = group_df.copy()
+                for col in numeric_cols:
+                    noise_size = len(new_group)
+                    random_noise = np.random.uniform(noise_min, noise_max, size=noise_size)
+                    random_sign = np.random.choice([-1, 1], size=noise_size)
+                    factor = 1 + (random_noise * random_sign)
+                    new_group[col] = new_group[col].astype(float) * factor
+
+                new_id = f"{original_id}_{id_suffix}_{i + 1}"
+                new_group[group_col] = new_id
+                augmented_dfs.append(new_group)
+
+        # Se la condizione è falsa, il ciclo salta questo gruppo e passa al successivo.
+
+    if not augmented_dfs:
+        return pd.DataFrame(columns=df.columns)
+
     return pd.concat(augmented_dfs, ignore_index=True)

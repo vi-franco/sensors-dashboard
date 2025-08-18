@@ -57,10 +57,24 @@ print(final_df.head())
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
 data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
-aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=2)
-if not aug_df.empty:
-    print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
-    data_for_training = pd.concat([data_for_training, aug_df], ignore_index=True)
+target1 = ['state_Riscaldamento']
+aug_df_1 = augment_specific_groups_with_noise(
+    df=data_for_training,
+    n_duplicates=4,
+    target_actuators=target1
+)
+
+target2 = ['state_Umidificatore', 'state_Deumidificatore']
+aug_df_2 = augment_specific_groups_with_noise(
+    df=data_for_training,
+    n_duplicates=2,
+    target_actuators=target2
+)
+
+if not aug_df_1.empty or not aug_df_2.empty:
+    righe_aggiunte = len(aug_df_1) + len(aug_df_2)
+    print(f"[AUG] Aggiunte {righe_aggiunte} righe (solo training).")
+    data_for_training = pd.concat([data_for_training, aug_df_1, aug_df_2], ignore_index=True)
 
 print("✅ [SEZIONE 2] Dati caricati.")
 
@@ -109,18 +123,14 @@ import keras
 def create_model(input_dim, output_dim):
     """Crea e compila il modello Keras."""
     x_in = Input(shape=(input_dim,))
-    x = Dense(128, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
+    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = Dropout(0.4)(x)
-    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
-    x = BatchNormalization()(x)
-    x = Activation("relu")(x)
-    x = Dropout(0.4)(x)
+    x = Dropout(0.3)(x)
     x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = Dropout(0.4)(x)
+    x = Dropout(0.3)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
     m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
@@ -206,8 +216,8 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     history = model.fit(
         X_tr_s, y_tr,
         validation_data=(X_va_s, y_va),
-        epochs=50,
-        batch_size=1024,
+        epochs=25,
+        batch_size=2048,
         verbose=1,
         callbacks=[es, rlr],
     )
