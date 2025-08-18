@@ -61,7 +61,7 @@ def log_actuator_stats(df: pd.DataFrame, STATE_COLS: list[str], name: str) -> No
 
 
 def augment_minority_periods_on_windows(
-    train_base: pd.DataFrame,
+    df: pd.DataFrame,
     state_cols: List[str],
     time_col: str = "utc_datetime",
     group_col: str = "period_id",
