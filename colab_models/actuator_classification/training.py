@@ -87,6 +87,30 @@ print("✅ [SEZIONE 4] OK.")
 # ==============================================================================
 # SEZIONE 5 — ADDESTRAMENTO & VALUTAZIONE (Time-Series Cross-Validation)
 # ==============================================================================
+def group_timeseries_splits(df, group_col="period_id", time_col="utc_datetime",
+                            n_splits=3, embargo_groups=0):
+    # Ordina i gruppi per tempo di inizio
+    grp_order = (df.groupby(group_col)[time_col]
+                   .min()
+                   .sort_values())
+    groups = grp_order.index.to_numpy()
+    m = len(groups)
+
+    # Divide i gruppi in n_splits blocchi consecutivi (senza shuffle)
+    fold_sizes = np.full(n_splits, m // n_splits, dtype=int)
+    fold_sizes[:m % n_splits] += 1
+
+    start = 0
+    for fold_size in fold_sizes:
+        stop = start + fold_size
+        val_groups = groups[start:stop]
+        # Purge/embargo: esclude i gruppi vicini alla val dal train
+        train_groups = groups[:max(0, start - embargo_groups)]
+        tr_idx = df[df[group_col].isin(train_groups)].index.values
+        va_idx = df[df[group_col].isin(val_groups)].index.values
+        yield tr_idx, va_idx, val_groups
+        start = stop
+
 print("\n--- [SEZIONE 5] Addestramento e Valutazione con TimeSeriesSplit ---")
 import matplotlib.pyplot as plt
 from sklearn.metrics import (
@@ -99,10 +123,9 @@ import numpy as np
 if data_for_training.empty:
     raise SystemExit("❌ Dataset di training vuoto. Impossibile addestrare.")
 
-df_train = data_for_training.sample(frac=1, random_state=42).reset_index(drop=True)
+df_train = data_for_training.sort_values("utc_datetime").reset_index(drop=True)
 
 X_df = df_train[features]
-X_df = X_df.fillna(X_df.mean())
 y_df = df_train[targets].astype(int)
 
 N_SPLITS = 3
@@ -125,8 +148,8 @@ def create_model(input_dim, output_dim):
 
 histories, all_y_val, all_y_pred_probs = [], [], []
 
-for fold_no, (tr_idx, va_idx) in enumerate(kfold.split(X_df, y_df), 1):
-    print(f"---------------- Fold {fold_no}/{N_SPLITS} ----------------")
+for fold_no, (tr_idx, va_idx, val_groups) in enumerate(group_timeseries_splits(df_train, "period_id", "utc_datetime", n_splits=3, embargo_groups=1), 1):
+    print(f"Fold {fold_no} - val groups: {list(val_groups)}")
     X_tr, X_va = X_df.iloc[tr_idx], X_df.iloc[va_idx]
     y_tr, y_va = y_df.iloc[tr_idx], y_df.iloc[va_idx]
 
