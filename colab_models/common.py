@@ -70,87 +70,70 @@ def augment_minority_periods_on_windows(
     noise_pct: float = 0.01,
     id_suffix: str = "AUG",
 ) -> pd.DataFrame:
-    # Assicura datetime
-    if not np.issubdtype(train_base[time_col].dtype, np.datetime64):
-        train_base = train_base.copy()
-        train_base[time_col] = pd.to_datetime(train_base[time_col], utc=True, errors="coerce")
 
-    # Colonne numeriche da “rumorizzare”
-    exclude = set([time_col, group_col]) | set(state_cols)
-    num_cols = [c for c in train_base.columns
-                if c not in exclude and np.issubdtype(train_base[c].dtype, np.number)]
+    num_cols = [c for c in df.select_dtypes(include=[np.number]).columns if c not in state_cols]
 
     def segments_on(g: pd.DataFrame, state_col: str):
         g = g.sort_values(time_col)
         on = g[state_col].astype(int).to_numpy()
-        if len(on) == 0:
-            return []
-        starts = np.where((on == 1) & (np.roll(on, 1) == 0))[0]
-        ends   = np.where((on == 1) & (np.roll(on, -1) == 0))[0]
-        if on[0] == 1 and (len(starts) == 0 or starts[0] != 0):
-            starts = np.insert(starts, 0, 0)
-        if on[-1] == 1 and (len(ends) == 0 or ends[-1] != len(on) - 1):
-            ends = np.append(ends, len(on) - 1)
-        segs = []
-        for s, e in zip(starts, ends):
-            t0, t1 = g.iloc[s][time_col], g.iloc[e][time_col]
-            if pd.isna(t0) or pd.isna(t1):
-                continue
-            segs.append((pd.Timestamp(t0), pd.Timestamp(t1)))
-        return segs
+        # trova run contigui di 1 con differenze su vettore esteso
+        d = np.diff(np.r_[0, on, 0])
+        starts = np.where(d == 1)[0]
+        ends   = np.where(d == -1)[0] - 1
+        # restituisce (t0, t1) per ogni segmento
+        return [(g.iloc[s][time_col], g.iloc[e][time_col]) for s, e in zip(starts, ends)]
+
 
     augmented = []
     acts = [c.removeprefix("state_") for c in state_cols]
 
     for act in acts:
         state_col = f"state_{act}"
-        pos_now = int(train_base[state_col].sum())
+        pos_now = int(df[state_col].sum())
         if pos_now >= min_pos_rows_per_act:
             continue
 
-        # Trova segmenti ON per ogni periodo dentro il TRAIN già filtrato
-        seg_meta = []  # (pid, t0c, t1c, pos_in_seg)
-        for pid, g in train_base.groupby(group_col, sort=False):
-            segs = segments_on(g, state_col)
-            for t0, t1 in segs:
+        # metadati segmenti ON (+/- contesto) disponibili nel train
+        meta = []
+        for pid, g in df.groupby(group_col, sort=False):
+            for t0, t1 in segments_on(g, state_col):
                 t0c = t0 - timedelta(minutes=context_minutes)
                 t1c = t1 + timedelta(minutes=context_minutes)
-                seg_df = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)]
-                if seg_df.empty:
+                seg = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)]
+                if seg.empty:
                     continue
-                pos_in_seg = int(seg_df[state_col].sum())
+                pos_in_seg = int(seg[state_col].sum())
                 if pos_in_seg == 0:
                     continue
-                seg_meta.append((pid, t0c, t1c, pos_in_seg))
+                meta.append((pid, t0c, t1c, pos_in_seg))
 
-        if not seg_meta:
+        if not meta:
             continue
 
         need = max(0, min_pos_rows_per_act - pos_now)
         k = 0
         while need > 0:
-            pid, t0c, t1c, pos_in_seg = seg_meta[k % len(seg_meta)]
-            g = train_base[train_base[group_col] == pid]
-            seg_df = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)].copy()
-            if seg_df.empty:
+            pid, t0c, t1c, pos_in_seg = meta[k % len(meta)]
+            g = df[df[group_col] == pid]
+            seg = g[(g[time_col] >= t0c) & (g[time_col] <= t1c)].copy()
+            if seg.empty:
                 k += 1
                 continue
 
             # nuovo period_id per i duplicati
-            seg_df[group_col] = f"{pid}__{act}_{id_suffix}_{k}"
+            seg[group_col] = f"{pid}__{act}_{id_suffix}_{k}"
 
-            # Rumore ±noise_pct
-            if noise_pct and noise_pct > 0 and num_cols:
-                # rumore indipendente per cella
-                noise = (np.random.rand(len(seg_df), len(num_cols)) * 2 - 1) * noise_pct
-                seg_df.loc[:, num_cols] = seg_df.loc[:, num_cols].to_numpy(dtype=float) * (1.0 + noise)
+            # rumore ±noise_pct (moltiplicativo) sulle sole numeriche
+            if num_cols and noise_pct:
+                noise = (np.random.rand(len(seg), len(num_cols)) * 2 - 1) * noise_pct
+                seg.loc[:, num_cols] = seg.loc[:, num_cols].to_numpy(dtype=float) * (1.0 + noise)
 
-            augmented.append(seg_df)
+            augmented.append(seg)
             need -= pos_in_seg
             k += 1
 
     if not augmented:
-        return pd.DataFrame(columns=train_base.columns)
+        return pd.DataFrame(columns=df.columns)
 
     aug_df = pd.concat(augmented, ignore_index=True)
     return aug_df.sort_values(time_col).reset_index(drop=True)
