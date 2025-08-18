@@ -96,36 +96,20 @@ def final_features_actuator_classification() -> list:
 
         # Flag eventi
         "co2_drop_flag_5m","voc_drop_flag_5m","temp_drop_flag_5m","temp_rise_flag_5m", "ah_drop_flag_5m","ah_rise_flag_5m",
-
-        "temperature_sensor_mean_60m",
-        "temperature_sensor_std_60m",
-
-        "absolute_humidity_sensor_mean_60m",
-        "absolute_humidity_sensor_std_60m",
-
-        "co2_mean_60m",
-        "co2_std_60m",
-
-        "voc_mean_60m",
-        "voc_std_60m",
-
-        "temp_diff_in_out_mean_60m",
-        "temp_diff_in_out_std_60m",
-
-        "ah_diff_in_out_mean_60m",
-        "ah_diff_in_out_std_60m",
-
-        "dewpoint_diff_in_out_mean_60m",
-        "dewpoint_diff_in_out_std_60m",
     ]
 
     rolling_features = get_rolling_features()
     feature_config = get_rolling_features_config()
-    features[:]  = [
-        f"{c}_{f}{w}m" for c in rolling_features
-        for f in feature_config.keys()
-        for w in feature_config[f]
-    ] + features
+    generated_features = []
+
+    for stat, windows in feature_config.items():
+        if isinstance(windows, int):
+            windows = [windows]
+        for window in windows:
+            for feature in base_features_for_rolling:
+                generated_features.append(f"{feature}_{stat}{window}m")
+
+    features.extend(generated_features)
 
 def final_features_actuator_classification_lstm() -> list:
     return [
