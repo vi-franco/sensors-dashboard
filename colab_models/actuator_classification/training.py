@@ -79,8 +79,8 @@ test_df           = get_data_from_periods(df, TEST_PERIODS_FILE)
 
 print(f"Righe Training: {len(data_for_training)} · Test: {len(test_df)}")
 
-log_actuator_stats(data_for_training, "Training Set", STATE_COLS)
-log_actuator_stats(test_df, "Test Set", STATE_COLS)
+log_actuator_stats(data_for_training, STATE_COLS, "Training Set")
+log_actuator_stats(test_df, STATE_COLS, "Test Set")
 
 print("✅ [SEZIONE 4] OK.")
 
