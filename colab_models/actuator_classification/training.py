@@ -57,25 +57,6 @@ print(final_df.head())
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
 data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
-target1 = ['state_Riscaldamento']
-aug_df_1 = augment_specific_groups_with_noise(
-    df=data_for_training,
-    n_duplicates=4,
-    target_actuators=target1
-)
-
-target2 = ['state_Umidificatore', 'state_Deumidificatore']
-aug_df_2 = augment_specific_groups_with_noise(
-    df=data_for_training,
-    n_duplicates=2,
-    target_actuators=target2
-)
-
-if not aug_df_1.empty or not aug_df_2.empty:
-    righe_aggiunte = len(aug_df_1) + len(aug_df_2)
-    print(f"[AUG] Aggiunte {righe_aggiunte} righe (solo training).")
-    data_for_training = pd.concat([data_for_training, aug_df_1, aug_df_2], ignore_index=True)
-
 print("✅ [SEZIONE 2] Dati caricati.")
 
 # ==============================================================================
@@ -194,8 +175,24 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     train_fold_original = data_original.iloc[train_idx]
     val_fold = data_original.iloc[val_idx]
 
-    train_fold_augmented = duplicate_groups_with_noise(train_fold_original, n_duplicates=5)
-    final_train_fold = pd.concat([train_fold_original, train_fold_augmented], ignore_index=True)
+    target1 = ['state_Riscaldamento']
+    aug_df_1 = augment_specific_groups_with_noise(
+        df=train_fold_original,
+        n_duplicates=5,
+        target_actuators=target1
+    )
+
+    target2 = ['state_Umidificatore', 'state_Deumidificatore']
+    aug_df_2 = augment_specific_groups_with_noise(
+        df=train_fold_original,
+        n_duplicates=3,
+        target_actuators=target2
+    )
+
+    if not aug_df_1.empty or not aug_df_2.empty:
+        righe_aggiunte = len(aug_df_1) + len(aug_df_2)
+        print(f"[AUG] Aggiunte {righe_aggiunte} righe (solo training).")
+        final_train_fold = pd.concat([train_fold_original, aug_df_1, aug_df_2], ignore_index=True)
 
     X_tr, y_tr = final_train_fold[features], final_train_fold[targets].astype(int).values
     X_va, y_va = val_fold[features], val_fold[targets].astype(int).values
