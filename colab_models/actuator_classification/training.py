@@ -21,7 +21,7 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
-from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names, log_actuator_stats, duplicate_groups_with_noise
+from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names, log_actuator_stats, augment_specific_groups_with_noise
 
 SAVE_DIR = Path(__file__).parent / "output"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
