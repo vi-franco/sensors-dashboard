@@ -106,7 +106,7 @@ def final_features_actuator_classification() -> list:
         if isinstance(windows, int):
             windows = [windows]
         for window in windows:
-            for feature in base_features_for_rolling:
+            for feature in rolling_features:
                 generated_features.append(f"{feature}_{stat}{window}m")
 
     features.extend(generated_features)
