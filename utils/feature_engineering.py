@@ -107,7 +107,7 @@ def final_features_actuator_classification() -> list:
             windows = [windows]
         for window in windows:
             for feature in rolling_features:
-                generated_features.append(f"{feature}_{stat}{window}m")
+                generated_features.append(f"{feature}_{stat}_{window}m")
 
     features.extend(generated_features)
     return features
@@ -201,12 +201,10 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return df
 
 def add_external_trends(df: pd.DataFrame, cols: list) -> pd.DataFrame:
-    win_short = 5
-    win_long = 30
     for c in cols:
         g = df.groupby("device")[c]
-        df[f"{c}_trend_{win_short}m"] = g.diff(win_short)
-        df[f"{c}_trend_{win_long}m"]  = g.diff(win_long)
+        df[f"{c}_trend_5m"] = g.diff(5)
+        df[f"{c}_trend_30m"]  = g.diff(30)
     return df
 
 
