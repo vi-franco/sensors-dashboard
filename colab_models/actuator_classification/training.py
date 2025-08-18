@@ -47,11 +47,6 @@ final_df = load_unified_dataset(DATASET_COMPLETO_PATH)
 if final_df.empty:
     raise SystemExit("DataFrame vuoto. Interrompo.")
 
-for col in final_df.select_dtypes(include=['float']).columns:
-    final_df[col] = pd.to_numeric(final_df[col], downcast='float')
-for col in final_df.select_dtypes(include=['int']).columns:
-    final_df[col] = pd.to_numeric(final_df[col], downcast='integer')
-
 print(final_df.head())
 
 print("✅ [SEZIONE 2] Dati caricati.")
