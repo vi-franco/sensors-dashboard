@@ -21,7 +21,7 @@ PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification, final_features_actuator_classification
-from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names, log_actuator_stats, augment_specific_groups_with_noise
+from colab_models.common import load_unified_dataset, get_data_from_periods, get_actuator_names, log_actuator_stats, augment_specific_groups_with_noise, focal_loss
 
 SAVE_DIR = Path(__file__).parent / "output"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,25 +149,6 @@ def plot_avg_learning_curve(histories, metric, path):
     plt.savefig(path)
     plt.show()
 
-def focal_loss(gamma=2.0, alpha=0.25):
-    """
-    Implementazione della Focal Loss.
-    gamma: parametro di focalizzazione. Valori più alti danno più peso agli errori.
-    alpha: parametro di bilanciamento per le classi.
-    """
-    def focal_loss_fixed(y_true, y_pred):
-        y_true = tf.cast(y_true, tf.float32)
-        pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
-        pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
-
-        epsilon = K.epsilon()
-        # clip per evitare log(0)
-        pt_1 = K.clip(pt_1, epsilon, 1. - epsilon)
-        pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
-
-        return -K.mean(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) \
-               -K.mean((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
-    return focal_loss_fixed
 
 # --------------------------------------------------------------------------
 # 1. PREPARAZIONE DATI PER LA CROSS-VALIDATION

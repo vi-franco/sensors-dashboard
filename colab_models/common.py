@@ -120,3 +120,23 @@ def augment_specific_groups_with_noise(
         return pd.DataFrame(columns=df.columns)
 
     return pd.concat(augmented_dfs, ignore_index=True)
+
+def focal_loss(gamma=2.0, alpha=0.25):
+    """
+    Implementazione della Focal Loss.
+    gamma: parametro di focalizzazione. Valori più alti danno più peso agli errori.
+    alpha: parametro di bilanciamento per le classi.
+    """
+    def focal_loss_fixed(y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        pt_1 = tf.where(tf.equal(y_true, 1), y_pred, tf.ones_like(y_pred))
+        pt_0 = tf.where(tf.equal(y_true, 0), y_pred, tf.zeros_like(y_pred))
+
+        epsilon = K.epsilon()
+        # clip per evitare log(0)
+        pt_1 = K.clip(pt_1, epsilon, 1. - epsilon)
+        pt_0 = K.clip(pt_0, epsilon, 1. - epsilon)
+
+        return -K.mean(alpha * K.pow(1. - pt_1, gamma) * K.log(pt_1)) \
+               -K.mean((1 - alpha) * K.pow(pt_0, gamma) * K.log(1. - pt_0))
+    return focal_loss_fixed

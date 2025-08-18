@@ -20,7 +20,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 MODEL_DIR = PROJECT_ROOT / "colab_models" / "actuator_classification" / "output"
 
 from utils.feature_engineering import ensure_min_columns_actuator_classification, add_features_actuator_classification
-from colab_models.common import get_actuator_names
+from colab_models.common import get_actuator_names, focal_loss
 
 def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, float]], str]:
     try:
@@ -29,7 +29,9 @@ def run_inference(history_df: pd.DataFrame) -> Tuple[Optional[Dict[str, int]], O
         features_path = MODEL_DIR / "features.json"
         thresholds_path = MODEL_DIR / "thresholds.json"
 
-        model = tf.keras.models.load_model(model_path)
+        custom_objects = {"focal_loss_fixed": focal_loss()}
+
+        model = tf.keras.models.load_model(model_path, custom_objects=custom_objects)
         scaler = joblib.load(scaler_path)
 
         with open(features_path, 'r', encoding='utf-8') as f:
