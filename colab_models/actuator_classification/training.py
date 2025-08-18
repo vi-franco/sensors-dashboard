@@ -91,7 +91,7 @@ targets  = STATE_COLS.copy()
 
 print(f"Features: {len(features)} · Targets: {len(targets)}")
 
-print(f"Righe Training: {len(df)} · Test: {len(data_for_test)}")
+print(f"Righe Training: {len(data_for_training)} · Test: {len(data_for_test)}")
 
 log_actuator_stats(data_for_training, STATE_COLS, "Training Set")
 log_actuator_stats(data_for_test, STATE_COLS, "Test Set")
