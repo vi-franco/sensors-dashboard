@@ -105,15 +105,17 @@ import keras
 
 def create_model(input_dim, output_dim):
     x_in = Input(shape=(input_dim,))
-    x = Dense(128, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
-    x = Dropout(0.2)(x)
-    x = Dense(64, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
-    x = Dropout(0.2)(x)
-    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
-    x = Dropout(0.2)(x)
+    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
+    x = BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    x = Dropout(0.5)(x)
+    x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
+    x = BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+    x = Dropout(0.3)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
-    m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
+    m.compile(optimizer=tf.keras.optimizers.Adam(2e-4),
               loss="binary_crossentropy",
               metrics=["binary_accuracy", "precision", "recall"])
     return m
