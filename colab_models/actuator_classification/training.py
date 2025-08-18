@@ -62,7 +62,7 @@ print("✅ [SEZIONE 2] Dati caricati.")
 
 print("\n--- [SEZIONE 3] Feature Engineering ---")
 
-data_for_training = add_features_actuator_classification(final_df)
+final_df = add_features_actuator_classification(final_df)
 print(final_df.head())
 
 print(f"✅ [SEZIONE 3] Completata. Shape: {final_df.shape}")
