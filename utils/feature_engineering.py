@@ -110,6 +110,7 @@ def final_features_actuator_classification() -> list:
                 generated_features.append(f"{feature}_{stat}{window}m")
 
     features.extend(generated_features)
+    return features
 
 def final_features_actuator_classification_lstm() -> list:
     return [
