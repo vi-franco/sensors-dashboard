@@ -52,7 +52,7 @@ print(final_df.head())
 data_for_training = get_data_from_periods(final_df, TRAINING_PERIODS_FILE)
 data_for_test = get_data_from_periods(final_df, TEST_PERIODS_FILE)
 
-aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=10)
+aug_df = duplicate_groups_with_noise(data_for_training, n_duplicates=3)
 if not aug_df.empty:
     print(f"[AUG] Aggiunte {len(aug_df)} righe (solo training).")
     data_for_training = pd.concat([data_for_training, aug_df], ignore_index=True)
@@ -105,10 +105,12 @@ import keras
 
 def create_model(input_dim, output_dim):
     x_in = Input(shape=(input_dim,))
-    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
-    x = Dropout(0.1)(x)
-    x = Dense(16, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
-    x = Dropout(0.1)(x)
+    x = Dense(128, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x_in)
+    x = Dropout(0.2)(x)
+    x = Dense(64, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
+    x = Dropout(0.2)(x)
+    x = Dense(32, activation="relu", kernel_regularizer=keras.regularizers.l2(1e-4))(x)
+    x = Dropout(0.2)(x)
     y_out = Dense(output_dim, activation="sigmoid")(x)
     m = Model(inputs=x_in, outputs=y_out)
     m.compile(optimizer=tf.keras.optimizers.Adam(5e-4),
@@ -172,7 +174,7 @@ history = model.fit(
     X_tr_s, y_tr,
     validation_data=(X_va_s, y_va),
     epochs=20,
-    batch_size=64,
+    batch_size=512,
     verbose=1,
     callbacks=[es, rlr],
 )
