@@ -99,11 +99,15 @@ import keras
 def create_model(input_dim, output_dim):
     """Crea e compila il modello Keras."""
     x_in = Input(shape=(input_dim,))
-    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
+    x = Dense(256, kernel_regularizer=keras.regularizers.l2(1e-3))(x_in)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
-    x = Dropout(0.3)(x)
-    x = Dense(32, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
+    x = Dropout(0.5)(x)
+    x = Dense(128, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
+    x = BatchNormalization()(x)
+    x = Activation("relu")(x)
+    x = Dropout(0.4)(x)
+    x = Dense(64, kernel_regularizer=keras.regularizers.l2(1e-3))(x)
     x = BatchNormalization()(x)
     x = Activation("relu")(x)
     x = Dropout(0.3)(x)
