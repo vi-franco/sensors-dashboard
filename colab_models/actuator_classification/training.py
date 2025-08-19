@@ -174,19 +174,19 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
     target1 = ['state_Riscaldamento']
     aug_df_1 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=2,
+        n_duplicates=1,
         target_actuators=target1,
         noise_min=0.01,
-        noise_max=0.03,
+        noise_max=0.02,
     )
 
     target2 = ['state_Umidificatore', 'state_Deumidificatore']
     aug_df_2 = augment_specific_groups_with_noise(
         df=train_fold_original,
-        n_duplicates=2,
+        n_duplicates=1,
         target_actuators=target2,
         noise_min=0.01,
-        noise_max=0.03,
+        noise_max=0.02,
     )
 
     if not aug_df_1.empty or not aug_df_2.empty:
@@ -194,7 +194,7 @@ for fold, (train_idx, val_idx) in enumerate(gkf.split(X_original_df, y_original_
         print(f"[AUG] Aggiunte {righe_aggiunte} righe (solo training).")
         final_train_fold = pd.concat([train_fold_original, aug_df_1, aug_df_2], ignore_index=True)
 
-    X_tr, y_tr = train_fold_original[features], train_fold_original[targets].astype(int).values
+    X_tr, y_tr = final_train_fold[features], final_train_fold[targets].astype(int).values
     X_va, y_va = val_fold[features], val_fold[targets].astype(int).values
     print(f"Train rows: {len(X_tr)} · Val rows: {len(X_va)}")
 
