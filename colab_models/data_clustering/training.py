@@ -64,6 +64,9 @@ try:
     test_periods_df = pd.read_csv(TEST_PERIODS_FILE, parse_dates=['start_time', 'end_time'])
     print(f"Caricati {len(test_periods_df)} periodi di test da escludere.")
 
+    test_periods_df['start_time'] = test_periods_df['start_time'].dt.tz_localize('UTC')
+    test_periods_df['end_time'] = test_periods_df['end_time'].dt.tz_localize('UTC')
+
     # Inizializza una maschera booleana con tutti False
     exclusion_mask = pd.Series(False, index=final_df.index)
 
