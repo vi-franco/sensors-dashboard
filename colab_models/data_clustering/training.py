@@ -140,13 +140,13 @@ print("\n--- [SEZIONE 5B] Conferma del K con il Silhouette Score ---")
 from sklearn.metrics import silhouette_score
 
 silhouette_scores = []
-
+X_sample = X_train_s[np.random.choice(X_train_s.shape[0], 50000, replace=False)]
 for k in k_range:
     print(f"Calcolo per k={k}...")
     kmeans = KMeans(n_clusters=k, n_init='auto', random_state=42)
-    labels = kmeans.fit_predict(X_train_s) # Usa X_train_s o X_sample
+    labels = kmeans.fit_predict(X_sample) # Usa X_train_s o X_sample
 
-    score = silhouette_score(X_train_s, labels) # Usa X_train_s o X_sample
+    score = silhouette_score(X_sample, labels) # Usa X_train_s o X_sample
     silhouette_scores.append(score)
 
 # Plot dei risultati
@@ -199,4 +199,32 @@ print(cluster_summary)
 
 cluster_summary.to_csv(SAVE_DIR / "cluster_summary.csv")
 print(f"Sommario salvato in: {SAVE_DIR / 'cluster_summary.csv'}")
+
+# ==============================================================================
+# NUOVO BLOCCO: ANALISI DELLA VARIANZA PER LA FEATURE SELECTION
+# ==============================================================================
+print("\n--- [SEZIONE 7B] Analisi Varianza per Feature Selection ---")
+from sklearn.preprocessing import MinMaxScaler
+
+# 1. Normalizza i dati del sommario per un confronto equo
+scaler_summary = MinMaxScaler()
+summary_scaled = pd.DataFrame(scaler_summary.fit_transform(cluster_summary), columns=cluster_summary.columns)
+
+# 2. Calcola la deviazione standard per ogni feature
+feature_variance = summary_scaled.std(axis=0).sort_values(ascending=False)
+
+print("\nFeature ordinate per importanza (varianza tra i cluster):")
+print(feature_variance.head(30)) # Mostra le 30 più importanti
+
+# 3. Seleziona le N feature migliori
+N_TOP_FEATURES = 40 # Puoi cambiare questo valore
+top_features = feature_variance.head(N_TOP_FEATURES).index.tolist()
+
+print(f"\n✅ Le {N_TOP_FEATURES} feature più importanti sono state identificate.")
+print("Per il prossimo ciclo, modifica la SEZIONE 4 per usare questa lista:")
+print("\nfeatures = [")
+for feature in top_features:
+    print(f"    '{feature}',")
+print("]")
+
 print("\n✅ Script completato.")
