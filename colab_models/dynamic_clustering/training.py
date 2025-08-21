@@ -101,7 +101,7 @@ features = [
     "absolute_humidity_sensor_trend_5m", "absolute_humidity_sensor_trend_30m", "absolute_humidity_sensor_trend_60m",
     "voc_trend_5m", "voc_trend_30m", "voc_trend_60m",
     "temperature_sensor_mean_5m", "temperature_sensor_mean_30m", "temperature_sensor_mean_60m",
-    "absolute_humidity_sensor_mean_5m", "absolute_humidity_sensor_mean_30", "absolute_humidity_sensor_mean_60m",
+    "absolute_humidity_sensor_mean_5m", "absolute_humidity_sensor_mean_30m", "absolute_humidity_sensor_mean_60m",
     "voc_mean_5m", "voc_mean_30m", "voc_mean_60m",
     "temperature_sensor_std_5m", "temperature_sensor_std_30m", "temperature_sensor_std_60m",
     "absolute_humidity_sensor_std_5m", "absolute_humidity_sensor_std_30m", "absolute_humidity_sensor_std_60m",
