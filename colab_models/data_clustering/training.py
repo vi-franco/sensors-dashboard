@@ -113,7 +113,7 @@ scaler = StandardScaler()
 X_train_s = scaler.fit_transform(X_train_imp)
 
 inertias = []
-k_range = range(2, 21)
+k_range = range(4, 10)
 
 for k in k_range:
     print(f"Calcolo per k={k}...")
@@ -133,6 +133,32 @@ plt.show()
 
 print("✅ [SEZIONE 5] Analisi del K completata. Ispeziona il grafico per scegliere il 'gomito'.")
 
+# =================================================================================
+# SEZIONE 5B — CONFERMA DEL K OTTIMALE CON IL SILHOUETTE SCORE
+# =================================================================================
+print("\n--- [SEZIONE 5B] Conferma del K con il Silhouette Score ---")
+from sklearn.metrics import silhouette_score
+
+silhouette_scores = []
+
+for k in k_range:
+    print(f"Calcolo per k={k}...")
+    kmeans = KMeans(n_clusters=k, n_init='auto', random_state=42)
+    labels = kmeans.fit_predict(X_train_s) # Usa X_train_s o X_sample
+
+    score = silhouette_score(X_train_s, labels) # Usa X_train_s o X_sample
+    silhouette_scores.append(score)
+
+# Plot dei risultati
+plt.figure(figsize=(10, 6))
+plt.plot(k_range, silhouette_scores, "o-")
+plt.xlabel("Numero di Cluster (k)")
+plt.ylabel("Silhouette Score")
+plt.title("Silhouette Score per la Scelta del K Ottimale")
+plt.grid(True)
+plt.xticks(k_range)
+plt.savefig(SAVE_DIR / "silhouette_score.png")
+plt.show()
 
 # ==============================================================================
 # SEZIONE 6 — ADDESTRAMENTO FINALE E SALVATAGGIO
