@@ -172,9 +172,10 @@ def add_in_out_delta_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_rolling_features_config() -> dict:
     return {
-       'trend': [5, 60],
-       'mean': [5, 60],
-       'std': [5, 60],
+       'trend': [5, 30, 60],
+       'mean': [5, 30, 60],
+       'std': [5, 30, 60],
+       'delta': [3, 5, 10],
        'accel': 5
    }
 
@@ -197,6 +198,10 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
         if 'trend' in feature_config:
             for w in feature_config['trend']:
                 df[f"{c}_trend_{w}m"] = g.diff(w)
+
+        if 'delta' in feature_config:
+            for w in feature_config['delta']:
+                df[f"{c}_delta_{w}m"] = g[c] - g[c].shift(w)
 
         if 'accel' in feature_config:
             base_window = feature_config['accel']

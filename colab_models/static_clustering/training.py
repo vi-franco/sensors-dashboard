@@ -94,23 +94,24 @@ except FileNotFoundError:
     data_for_clustering = final_df.copy()
 
 features = [
-    "temperature_sensor","absolute_humidity_sensor","co2","voc",
-    "temperature_external","absolute_humidity_external",
     "temp_diff_in_out","ah_diff_in_out", "vpd_in","vpd_diff","temp_diff_x_wind",
     "temperature_external_trend_5m",
     "absolute_humidity_external_trend_5m",
-    "temperature_sensor_trend_5m","temperature_sensor_trend_60m",
-    "absolute_humidity_sensor_trend_5m","absolute_humidity_sensor_trend_60m",
-    "voc_trend_5m","voc_trend_60m",
-    "temperature_sensor_mean_5m","temperature_sensor_mean_60m",
-    "absolute_humidity_sensor_mean_5m","absolute_humidity_sensor_mean_60m",
-    "voc_mean_5m","voc_mean_60m",
-    "temperature_sensor_std_5m","temperature_sensor_std_60m",
-    "absolute_humidity_sensor_std_5m","absolute_humidity_sensor_std_60m",
-    "voc_std_5m","voc_std_60m",
+    "temperature_sensor_trend_5m", "temperature_sensor_trend_30m","temperature_sensor_trend_60m",
+    "absolute_humidity_sensor_trend_5m", "absolute_humidity_sensor_trend_30m", "absolute_humidity_sensor_trend_60m",
+    "voc_trend_5m", "voc_trend_30m", "voc_trend_60m",
+    "temperature_sensor_mean_5m", "temperature_sensor_mean_30m", "temperature_sensor_mean_60m",
+    "absolute_humidity_sensor_mean_5m", "absolute_humidity_sensor_mean_30", "absolute_humidity_sensor_mean_60m",
+    "voc_mean_5m", "voc_mean_30m", "voc_mean_60m",
+    "temperature_sensor_std_5m", "temperature_sensor_std_30m", "temperature_sensor_std_60m",
+    "absolute_humidity_sensor_std_5m", "absolute_humidity_sensor_std_30m", "absolute_humidity_sensor_std_60m",
+    "voc_std_5m", "voc_std_30m", "voc_std_60m",
     "temperature_sensor_accel_5m",
     "absolute_humidity_sensor_accel_5m",
     "voc_accel_5m",
+    "temperature_sensor_delta_3m", "temperature_sensor_delta_5m", "temperature_sensor_delta_10m",
+    "absolute_humidity_sensor_delta_3m", "absolute_humidity_sensor_delta_5m", "absolute_humidity_sensor_delta_10m",
+    "voc_delta_3m", "voc_delta_5m", "voc_delta_10m",
 ]
 X_train = data_for_clustering[features]
 
