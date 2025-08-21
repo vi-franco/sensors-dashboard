@@ -140,7 +140,7 @@ print("\n--- [SEZIONE 5B] Conferma del K con il Silhouette Score ---")
 from sklearn.metrics import silhouette_score
 
 silhouette_scores = []
-X_sample = X_train_s[np.random.choice(X_train_s.shape[0], 50000, replace=False)]
+X_sample = X_train_s[np.random.choice(X_train_s.shape[0], 200000, replace=False)]
 for k in k_range:
     print(f"Calcolo per k={k}...")
     kmeans = KMeans(n_clusters=k, n_init='auto', random_state=42)
