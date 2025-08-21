@@ -113,7 +113,7 @@ scaler = StandardScaler()
 X_train_s = scaler.fit_transform(X_train_imp)
 
 inertias = []
-k_range = range(4, 10)
+k_range = range(3, 15)
 
 for k in k_range:
     print(f"Calcolo per k={k}...")
@@ -167,7 +167,7 @@ print("\n--- [SEZIONE 6] Addestramento Finale del Modello di Clustering ---")
 
 # --- MODIFICA QUI ---
 # Sulla base del grafico, scegli il valore di k che ritieni ottimale
-OPTIMAL_K = 7
+OPTIMAL_K = 4
 # --------------------
 print(f"K ottimale scelto: {OPTIMAL_K}")
 
@@ -214,7 +214,7 @@ summary_scaled = pd.DataFrame(scaler_summary.fit_transform(cluster_summary), col
 feature_variance = summary_scaled.std(axis=0).sort_values(ascending=False)
 
 print("\nFeature ordinate per importanza (varianza tra i cluster):")
-print(feature_variance.head(30)) # Mostra le 30 più importanti
+print(feature_variance.head(40)) # Mostra le 30 più importanti
 
 # 3. Seleziona le N feature migliori
 N_TOP_FEATURES = 40 # Puoi cambiare questo valore
