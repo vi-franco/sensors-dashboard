@@ -113,7 +113,7 @@ def final_features_actuator_classification() -> list:
     return features
 
 def final_features_actuator_classification_lstm() -> list:
-    return [
+    features = [
         # Base
         "temperature_sensor","absolute_humidity_sensor","co2","voc",
         "temperature_external","absolute_humidity_external",
@@ -125,16 +125,24 @@ def final_features_actuator_classification_lstm() -> list:
         # Tempo locale
         "hour_sin","hour_cos","minutes_from_sunrise","minutes_to_sunset",
 
-        # Rolling
-        "temperature_sensor_trend_5m", "temperature_sensor_trend_30m",
-        "absolute_humidity_sensor_trend_5m", "absolute_humidity_sensor_trend_30m",
-        "co2_trend_5m", "co2_trend_30m",
-        "voc_trend_5m", "voc_trend_30m",
-
         # Trend esterni
         "temperature_external_trend_5m",
         "absolute_humidity_external_trend_5m"
     ]
+
+    rolling_features = get_rolling_features()
+    feature_config = get_rolling_features_config()
+    generated_features = []
+
+    for stat, windows in feature_config.items():
+        if isinstance(windows, int):
+            windows = [windows]
+        for window in windows:
+            for feature in rolling_features:
+                generated_features.append(f"{feature}_{stat}_{window}m")
+
+    features.extend(generated_features)
+    return features
 
 def add_time_cyclic(df: pd.DataFrame) -> pd.DataFrame:
     dt_local = pd.to_datetime(df["local_datetime"], errors="coerce")
