@@ -14,32 +14,18 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-# Assicurati che i percorsi siano corretti per il tuo ambiente
-try:
-    CURRENT_DIR = Path(__file__).parent
-    PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
-    sys.path.insert(0, str(PROJECT_ROOT))
-    from utils.feature_engineering import add_features_actuator_classification, final_features_actuator_classification
-    from colab_models.common import load_unified_dataset
-except (NameError, ImportError):
-    print("Avviso: Impossibile importare moduli locali. Verranno usate funzioni stub.")
-    def final_features_actuator_classification():
-        return ['temp_interna_C', 'umidita_interna_perc', 'temp_esterna_C', 'umidita_esterna_perc', 'irraggiamento_W_m2',
-                'day_of_year_sin', 'day_of_year_cos', 'hour_of_day_sin', 'hour_of_day_cos']
-    def load_unified_dataset(path): return pd.DataFrame()
-    def add_features_actuator_classification(df):
-        df['day_of_year_sin'] = np.sin(2 * np.pi * df['utc_datetime'].dt.dayofyear / 365)
-        df['day_of_year_cos'] = np.cos(2 * np.pi * df['utc_datetime'].dt.dayofyear / 365)
-        df['hour_of_day_sin'] = np.sin(2 * np.pi * df['utc_datetime'].dt.hour / 24)
-        df['hour_of_day_cos'] = np.cos(2 * np.pi * df['utc_datetime'].dt.hour / 24)
-        return df
+CURRENT_DIR = Path(__file__).parent
+PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.feature_engineering import add_features_actuator_classification, final_features_actuator_classification
+from colab_models.common import load_unified_dataset
 
-SAVE_DIR = Path("./output")
+SAVE_DIR = Path(__file__).parent / "output"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 print(f"Directory di output pronta: {SAVE_DIR}")
 
-BASE_PATH = Path("./") # Modifica con il tuo percorso
+BASE_PATH = Path("/content/drive/MyDrive/Tesi")
 DATASET_COMPLETO_PATH = BASE_PATH / "DatasetSegmentato"
 TEST_PERIODS_FILE = BASE_PATH / "test_periods.csv"
 
