@@ -201,7 +201,7 @@ def add_rolling_features(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 
         if 'delta' in feature_config:
             for w in feature_config['delta']:
-                df[f"{c}_delta_{w}m"] = g[c] - g[c].shift(w)
+                df[f"{c}_delta_{w}m"] = g - g.shift(w)
 
         if 'accel' in feature_config:
             base_window = feature_config['accel']
