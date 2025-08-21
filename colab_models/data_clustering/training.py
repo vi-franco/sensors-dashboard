@@ -93,7 +93,48 @@ except FileNotFoundError:
     print(f"Avviso: File '{TEST_PERIODS_FILE}' non trovato. Uso l'intero dataset per il clustering.")
     data_for_clustering = final_df.copy()
 
-features = final_features_actuator_classification()
+features = [
+    'temp_rise_flag_5m',
+    'dewpoint_diff_in_out_std_60m',
+    'absolute_humidity_sensor_std_60m',
+    'temperature_sensor_trend_5m',
+    'dewpoint_diff_in_out_trend_5m',
+    'ah_diff_in_out_trend_5m',
+    'ah_rise_flag_5m',
+    'temp_drop_flag_5m',
+    'absolute_humidity_sensor_trend_5m',
+    'dewpoint_diff_in_out_std_5m',
+    'temp_diff_in_out_std_60m',
+    'temp_diff_in_out_std_5m',
+    'temperature_sensor_std_5m',
+    'minutes_from_sunrise',
+    'temp_diff_x_wind',
+    'voc_std_60m',
+    'voc_std_5m',
+    'voc',
+    'voc_mean_5m',
+    'minutes_to_sunset',
+    'co2_std_5m',
+    'voc_drop_flag_5m',
+    'rain_1h',
+    'temperature_sensor_trend_60m',
+    'ground_level_pressure',
+    'co2_drop_flag_5m',
+    'voc_mean_60m',
+    'hour_sin',
+    'temperature_sensor',
+    'temperature_sensor_mean_5m',
+    'temp_diff_in_out',
+    'temp_diff_in_out_mean_5m',
+    'temperature_sensor_mean_60m',
+    'absolute_humidity_external',
+    'temp_diff_in_out_mean_60m',
+    'clouds_percentage',
+    'co2_accel_5m',
+    'hour_cos',
+    'co2',
+    'co2_mean_5m',
+]
 X_train = data_for_clustering[features]
 
 print(f"\nFeatures utilizzate per il clustering: {len(features)}")
@@ -113,7 +154,7 @@ scaler = StandardScaler()
 X_train_s = scaler.fit_transform(X_train_imp)
 
 inertias = []
-k_range = range(3, 15)
+k_range = range(2, 10)
 
 for k in k_range:
     print(f"Calcolo per k={k}...")
@@ -140,7 +181,7 @@ print("\n--- [SEZIONE 5B] Conferma del K con il Silhouette Score ---")
 from sklearn.metrics import silhouette_score
 
 silhouette_scores = []
-X_sample = X_train_s[np.random.choice(X_train_s.shape[0], 200000, replace=False)]
+X_sample = X_train_s[np.random.choice(X_train_s.shape[0], 10000, replace=False)]
 for k in k_range:
     print(f"Calcolo per k={k}...")
     kmeans = KMeans(n_clusters=k, n_init='auto', random_state=42)
