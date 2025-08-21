@@ -1,0 +1,187 @@
+# ==============================================================================
+# SEZIONE 0 — SETUP E CONFIGURAZIONE
+# ==============================================================================
+print("--- [SEZIONE 0] Inizio Setup e Configurazione ---")
+import json
+from pathlib import Path
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.cluster import KMeans
+import joblib
+import matplotlib.pyplot as plt
+import sys
+import os
+
+# Assicurati che i percorsi siano corretti per il tuo ambiente
+try:
+    CURRENT_DIR = Path(__file__).parent
+    PROJECT_ROOT = (CURRENT_DIR / "../..").resolve()
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from utils.feature_engineering import add_features_actuator_classification, final_features_actuator_classification
+    from colab_models.common import load_unified_dataset
+except (NameError, ImportError):
+    print("Avviso: Impossibile importare moduli locali. Verranno usate funzioni stub.")
+    def final_features_actuator_classification():
+        return ['temp_interna_C', 'umidita_interna_perc', 'temp_esterna_C', 'umidita_esterna_perc', 'irraggiamento_W_m2',
+                'day_of_year_sin', 'day_of_year_cos', 'hour_of_day_sin', 'hour_of_day_cos']
+    def load_unified_dataset(path): return pd.DataFrame()
+    def add_features_actuator_classification(df):
+        df['day_of_year_sin'] = np.sin(2 * np.pi * df['utc_datetime'].dt.dayofyear / 365)
+        df['day_of_year_cos'] = np.cos(2 * np.pi * df['utc_datetime'].dt.dayofyear / 365)
+        df['hour_of_day_sin'] = np.sin(2 * np.pi * df['utc_datetime'].dt.hour / 24)
+        df['hour_of_day_cos'] = np.cos(2 * np.pi * df['utc_datetime'].dt.hour / 24)
+        return df
+
+
+SAVE_DIR = Path("./output")
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
+print(f"Directory di output pronta: {SAVE_DIR}")
+
+BASE_PATH = Path("./") # Modifica con il tuo percorso
+DATASET_COMPLETO_PATH = BASE_PATH / "DatasetSegmentato"
+TEST_PERIODS_FILE = BASE_PATH / "test_periods.csv"
+
+print("✅ [SEZIONE 0] Setup completato.")
+
+
+# ==============================================================================
+# SEZIONE 2 — CARICAMENTO DEL DATASET
+# ==============================================================================
+print("\n--- [SEZIONE 2] Caricamento Dati ---")
+
+final_df = load_unified_dataset(DATASET_COMPLETO_PATH)
+final_df['utc_datetime'] = pd.to_datetime(final_df['utc_datetime'])
+if final_df.empty: raise SystemExit("DataFrame vuoto. Interrompo.")
+
+print(f"Dataset completo caricato. Shape iniziale: {final_df.shape}")
+print(final_df.head())
+print("✅ [SEZIONE 2] Dati caricati.")
+
+
+# ==============================================================================
+# SEZIONE 3 — FEATURE ENGINEERING
+# ==============================================================================
+print("\n--- [SEZIONE 3] Feature Engineering ---")
+
+final_df = add_features_actuator_classification(final_df)
+print(f"✅ [SEZIONE 3] Completata. Shape: {final_df.shape}")
+
+
+# ==============================================================================
+# SEZIONE 4 — DEFINIZIONE FEATURE E DATI (TUTTI escluso TEST)
+# ==============================================================================
+print("\n--- [SEZIONE 4] Esclusione dei periodi di Test ---")
+
+try:
+    test_periods_df = pd.read_csv(TEST_PERIODS_FILE, parse_dates=['start_time', 'end_time'])
+    print(f"Caricati {len(test_periods_df)} periodi di test da escludere.")
+
+    # Inizializza una maschera booleana con tutti False
+    exclusion_mask = pd.Series(False, index=final_df.index)
+
+    for period in test_periods_df.itertuples():
+        device = period.device
+        start = period.start_time
+        end = period.end_time
+
+        period_mask = (
+            (final_df['device'] == device) &
+            (final_df['utc_datetime'] >= start) &
+            (final_df['utc_datetime'] <= end)
+        )
+        exclusion_mask = exclusion_mask | period_mask
+        print(f"Esclusi {period_mask.sum()} punti per il periodo {device} da {start.date()} a {end.date()}")
+
+    data_for_clustering = final_df[~exclusion_mask].copy()
+
+    print(f"\nRighe totali: {len(final_df)}")
+    print(f"Righe escluse (test set): {exclusion_mask.sum()}")
+    print(f"Righe rimanenti per il clustering: {len(data_for_clustering)}")
+
+except FileNotFoundError:
+    print(f"Avviso: File '{TEST_PERIODS_FILE}' non trovato. Uso l'intero dataset per il clustering.")
+    data_for_clustering = final_df.copy()
+
+features = final_features_actuator_classification()
+X_train = data_for_clustering[features]
+
+print(f"\nFeatures utilizzate per il clustering: {len(features)}")
+print(f"Numero totale di campioni per il clustering: {len(X_train)}")
+print("✅ [SEZIONE 4] Dati pronti.")
+
+
+# ==============================================================================
+# SEZIONE 5 — RICERCA DEL NUMERO OTTIMALE DI CLUSTER (K)
+# ==============================================================================
+print("\n--- [SEZIONE 5] Ricerca del K ottimale con il Metodo del Gomito ---")
+
+imputer = SimpleImputer(strategy="mean")
+X_train_imp = imputer.fit_transform(X_train)
+
+scaler = StandardScaler()
+X_train_s = scaler.fit_transform(X_train_imp)
+
+inertias = []
+k_range = range(2, 21)
+
+for k in k_range:
+    print(f"Calcolo per k={k}...")
+    kmeans = KMeans(n_clusters=k, n_init='auto', random_state=42)
+    kmeans.fit(X_train_s)
+    inertias.append(kmeans.inertia_)
+
+plt.figure(figsize=(10, 6))
+plt.plot(k_range, inertias, "o-")
+plt.xlabel("Numero di Cluster (k)")
+plt.ylabel("Inerzia")
+plt.title("Metodo del Gomito per la Scelta del K Ottimale")
+plt.grid(True)
+plt.xticks(k_range)
+plt.savefig(SAVE_DIR / "elbow_method.png")
+plt.show()
+
+print("✅ [SEZIONE 5] Analisi del K completata. Ispeziona il grafico per scegliere il 'gomito'.")
+
+
+# ==============================================================================
+# SEZIONE 6 — ADDESTRAMENTO FINALE E SALVATAGGIO
+# ==============================================================================
+print("\n--- [SEZIONE 6] Addestramento Finale del Modello di Clustering ---")
+
+# --- MODIFICA QUI ---
+# Sulla base del grafico, scegli il valore di k che ritieni ottimale
+OPTIMAL_K = 7
+# --------------------
+print(f"K ottimale scelto: {OPTIMAL_K}")
+
+final_kmeans_model = KMeans(n_clusters=OPTIMAL_K, n_init='auto', random_state=42)
+final_kmeans_model.fit(X_train_s)
+print("Modello di clustering addestrato con successo.")
+
+joblib.dump(final_kmeans_model, SAVE_DIR / "kmeans_model.joblib")
+joblib.dump(scaler, SAVE_DIR / "scaler_clustering.joblib")
+joblib.dump(imputer, SAVE_DIR / "imputer_clustering.joblib") # Salva anche l'imputer
+
+with open(SAVE_DIR / "features_clustering.json", "w") as f: json.dump(features, f, indent=2)
+metrics = {"optimal_k": OPTIMAL_K, "inertia": final_kmeans_model.inertia_}
+with open(SAVE_DIR / "metrics_clustering.json", "w") as f: json.dump(metrics, f, indent=2)
+
+print(f"✅ Modello, scaler, imputer e features salvati in: {SAVE_DIR}")
+
+
+# ==============================================================================
+# SEZIONE 7 — (OPZIONALE) ANALISI DEI CLUSTER
+# ==============================================================================
+print("\n--- [SEZIONE 7] Analisi Descrittiva dei Cluster Trovati ---")
+
+data_for_clustering['cluster'] = final_kmeans_model.labels_
+cluster_summary = data_for_clustering.groupby('cluster')[features].mean().round(2)
+
+print("Valori medi delle feature per ogni cluster:")
+print(cluster_summary)
+
+cluster_summary.to_csv(SAVE_DIR / "cluster_summary.csv")
+print(f"Sommario salvato in: {SAVE_DIR / 'cluster_summary.csv'}")
+print("\n✅ Script completato.")
