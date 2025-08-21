@@ -109,9 +109,6 @@ features = [
     "temperature_sensor_accel_5m",
     "absolute_humidity_sensor_accel_5m",
     "voc_accel_5m",
-    "temperature_sensor_delta_3m", "temperature_sensor_delta_5m", "temperature_sensor_delta_10m",
-    "absolute_humidity_sensor_delta_3m", "absolute_humidity_sensor_delta_5m", "absolute_humidity_sensor_delta_10m",
-    "voc_delta_3m", "voc_delta_5m", "voc_delta_10m",
 ]
 X_train = data_for_clustering[features]
 
