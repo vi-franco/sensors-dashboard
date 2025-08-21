@@ -98,7 +98,7 @@ features = [
     "temperature_external","absolute_humidity_external",
     "temp_diff_in_out","ah_diff_in_out", "vpd_in","vpd_diff","temp_diff_x_wind",
     "temperature_external_trend_5m",
-    "absolute_humidity_external_trend_5m"
+    "absolute_humidity_external_trend_5m",
     "temperature_sensor_trend_5m","temperature_sensor_trend_60m",
     "absolute_humidity_sensor_trend_5m","absolute_humidity_sensor_trend_60m",
     "voc_trend_5m","voc_trend_60m",
@@ -232,10 +232,10 @@ summary_scaled = pd.DataFrame(scaler_summary.fit_transform(cluster_summary), col
 feature_variance = summary_scaled.std(axis=0).sort_values(ascending=False)
 
 print("\nFeature ordinate per importanza (varianza tra i cluster):")
-print(feature_variance.head(40)) # Mostra le 30 più importanti
+print(feature_variance.head(30)) # Mostra le 30 più importanti
 
 # 3. Seleziona le N feature migliori
-N_TOP_FEATURES = 40 # Puoi cambiare questo valore
+N_TOP_FEATURES = 30 # Puoi cambiare questo valore
 top_features = feature_variance.head(N_TOP_FEATURES).index.tolist()
 
 print(f"\n✅ Le {N_TOP_FEATURES} feature più importanti sono state identificate.")
