@@ -131,7 +131,7 @@ scaler = StandardScaler()
 X_train_s = scaler.fit_transform(X_train_imp)
 
 inertias = []
-k_range = range(4, 30)
+k_range = range(5, 5)
 
 for k in k_range:
     print(f"Calcolo per k={k}...")
@@ -185,7 +185,7 @@ print("\n--- [SEZIONE 6] Addestramento Finale del Modello di Clustering ---")
 
 # --- MODIFICA QUI ---
 # Sulla base del grafico, scegli il valore di k che ritieni ottimale
-OPTIMAL_K = 4
+OPTIMAL_K = 5
 # --------------------
 print(f"K ottimale scelto: {OPTIMAL_K}")
 
